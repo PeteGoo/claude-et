@@ -106,6 +106,20 @@ export async function getContainerStatus(containerId) {
   }
 }
 
+export async function getContainerLogs(containerId, tail = 200) {
+  const container = docker.getContainer(containerId)
+  const logBuffer = await container.logs({
+    stdout: true,
+    stderr: true,
+    tail,
+    timestamps: true,
+  })
+  // Docker multiplexed stream: each frame has 8-byte header
+  // We need to strip the header bytes from each frame
+  const raw = typeof logBuffer === 'string' ? logBuffer : logBuffer.toString('utf8')
+  return raw
+}
+
 export async function listAvailableImages() {
   const images = await docker.listImages()
   return images.flatMap(img => img.RepoTags || []).filter(t => t !== '<none>:<none>')
