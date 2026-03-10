@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  manager:
+    image: ghcr.io/petegoo/claude-et-manager:latest
+    container_name: claude-session-manager
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /mnt/user/appdata/claude-session-manager:/data
+      - /mnt/user/claude-sessions:/mnt/user/claude-sessions
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATA_DIR=/data
+      - LOG_LEVEL=info
+    labels:
+      - "net.unraid.docker.managed=dockerman"
+      - "net.unraid.docker.webui=http://[IP]:[PORT:3000]"
+      - "net.unraid.docker.icon=https://anthropic.com/favicon.ico"
+      - "com.centurylinklabs.watchtower.enable=true"
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower-claude
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_POLL_INTERVAL=300
+      - WATCHTOWER_LABEL_ENABLE=true
+    # Only watches containers with the watchtower label

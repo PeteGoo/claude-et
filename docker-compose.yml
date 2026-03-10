@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  manager:
+    build:
+      context: ./manager
+      dockerfile: Dockerfile
+    container_name: claude-session-manager
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      # Docker socket — required to manage session containers
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Persistent data (SQLite db + settings)
+      - /mnt/user/appdata/claude-session-manager:/data
+      # Sessions storage (repos + CRIU checkpoints)
+      - /mnt/user/claude-sessions:/mnt/user/claude-sessions
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATA_DIR=/data
+      - LOG_LEVEL=info
+    labels:
+      - "net.unraid.docker.managed=dockerman"
+      - "net.unraid.docker.webui=http://[IP]:[PORT:3000]"
+      - "net.unraid.docker.icon=https://anthropic.com/favicon.ico"

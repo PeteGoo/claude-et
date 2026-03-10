@@ -1,0 +1,71 @@
+name: Build and Push Docker Images
+
+on:
+  push:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  OWNER: ${{ github.repository_owner }}
+
+jobs:
+  build-manager:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build UI
+        working-directory: ui
+        run: npm ci && npm run build
+
+      - name: Copy UI dist into manager
+        run: cp -r ui/dist manager/ui-dist
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push manager image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./manager
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/claude-et-manager:latest
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/claude-et-manager:${{ github.sha }}
+
+  build-session-image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push session image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./session-image
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/claude-et-session:latest
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/claude-et-session:${{ github.sha }}
