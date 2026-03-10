@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Terminal, Play, Pause, Square, Trash2, Plus, Settings,
   RefreshCw, Copy, Check, Github, Server, ChevronRight,
   ChevronLeft, X, AlertCircle, Loader, HardDrive, Key,
-  Search
+  Search, ScrollText, ArrowDown
 } from 'lucide-react'
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
@@ -619,9 +619,161 @@ function SettingsPanel({ onClose }) {
   )
 }
 
+// ─── Logs Modal ──────────────────────────────────────────────────────────────
+
+function LogsModal({ session, onClose }) {
+  const [logs, setLogs] = useState('')
+  const [tail, setTail] = useState(200)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [atBottom, setAtBottom] = useState(true)
+  const containerNodeRef = useRef(null)
+  const containerRef = useCallback(node => {
+    if (node) {
+      containerNodeRef.current = node
+      // Scroll to bottom on mount
+      node.scrollTop = node.scrollHeight
+    }
+  }, [])
+
+  const fetchLogs = useCallback(async (numLines) => {
+    setLoading(true)
+    setError('')
+    try {
+      const data = await api.get(`/sessions/${session.id}/logs?tail=${numLines}`)
+      if (data.error) {
+        setError(data.error)
+        setLogs('')
+      } else {
+        setLogs(data.logs || '')
+      }
+    } catch (err) {
+      setError(err.message)
+    }
+    setLoading(false)
+  }, [session.id])
+
+  // Initial load
+  useEffect(() => {
+    fetchLogs(tail)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Scroll to bottom after logs update
+  useEffect(() => {
+    const el = containerNodeRef.current
+    if (el && atBottom) {
+      el.scrollTop = el.scrollHeight
+    }
+  }, [logs]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleScroll = (e) => {
+    const el = e.target
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40
+    setAtBottom(nearBottom)
+
+    // If scrolled to top, load more lines
+    if (el.scrollTop === 0 && !loading) {
+      const prevHeight = el.scrollHeight
+      const newTail = Math.min(tail + 500, 10000)
+      if (newTail !== tail) {
+        setTail(newTail)
+        fetchLogs(newTail).then(() => {
+          // Preserve scroll position after loading more
+          requestAnimationFrame(() => {
+            if (containerNodeRef.current) {
+              containerNodeRef.current.scrollTop = containerNodeRef.current.scrollHeight - prevHeight
+            }
+          })
+        })
+      }
+    }
+  }
+
+  const scrollToBottom = () => {
+    const el = containerNodeRef.current
+    if (el) {
+      el.scrollTop = el.scrollHeight
+      setAtBottom(true)
+    }
+  }
+
+  const refresh = () => {
+    fetchLogs(tail).then(() => {
+      requestAnimationFrame(() => {
+        const el = containerNodeRef.current
+        if (el) el.scrollTop = el.scrollHeight
+      })
+      setAtBottom(true)
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-zinc-900 border border-zinc-700 rounded-xl w-full max-w-4xl h-[80vh] flex flex-col relative">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-zinc-700 shrink-0">
+          <h3 className="font-semibold text-white flex items-center gap-2">
+            <ScrollText size={16} className="text-violet-400" /> Logs — {session.name}
+          </h3>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-zinc-500">{tail} lines</span>
+            <button onClick={refresh} title="Refresh logs"
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors">
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            </button>
+            <button onClick={onClose} className="text-zinc-400 hover:text-white"><X size={18} /></button>
+          </div>
+        </div>
+
+        {/* Log content */}
+        <div
+          ref={containerRef}
+          onScroll={handleScroll}
+          className="flex-1 overflow-y-auto bg-black p-4 font-mono text-xs text-zinc-300 whitespace-pre-wrap break-all leading-relaxed"
+        >
+          {loading && !logs && (
+            <div className="flex justify-center py-12"><Loader size={20} className="animate-spin text-zinc-500" /></div>
+          )}
+          {error && !logs && (
+            <div className="flex items-center gap-2 text-red-400 py-4">
+              <AlertCircle size={14} />{error}
+            </div>
+          )}
+          {logs && (
+            <>
+              {loading && (
+                <div className="text-center text-zinc-600 py-1 mb-2">Loading more...</div>
+              )}
+              {logs}
+            </>
+          )}
+        </div>
+
+        {/* Scroll-to-bottom FAB */}
+        {!atBottom && (
+          <button onClick={scrollToBottom}
+            className="absolute bottom-20 right-10 p-2 bg-violet-600 hover:bg-violet-500 text-white rounded-full shadow-lg transition-colors">
+            <ArrowDown size={16} />
+          </button>
+        )}
+
+        {/* Footer */}
+        <div className="flex items-center justify-between px-4 py-2 border-t border-zinc-700 shrink-0 text-xs text-zinc-500">
+          <span>Scroll to top to load more lines</span>
+          {session.status !== 'running' && (
+            <span className="flex items-center gap-1 text-amber-400">
+              <AlertCircle size={11} />Container is {session.status}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Session Card ─────────────────────────────────────────────────────────────
 
-function SessionCard({ session, images, onAction, onConnect }) {
+function SessionCard({ session, images, onAction, onConnect, onLogs }) {
   const [actioning, setActioning] = useState(null)
 
   const act = async (action) => {
@@ -661,6 +813,15 @@ function SessionCard({ session, images, onAction, onConnect }) {
           className="p-2 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-700 transition-colors">
           <Terminal size={15} />
         </button>
+
+        {/* Container logs */}
+        {session.containerId && (
+          <button onClick={() => onLogs(session)}
+            title="View container logs"
+            className="p-2 rounded-lg text-zinc-400 hover:text-violet-400 hover:bg-zinc-700 transition-colors">
+            <ScrollText size={15} />
+          </button>
+        )}
 
         {/* Pause */}
         {canPause && (
@@ -705,6 +866,7 @@ export default function App() {
   const [showWizard, setShowWizard] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [sshSession, setSshSession] = useState(null)
+  const [logsSession, setLogsSession] = useState(null)
 
   const refresh = useCallback(async () => {
     const [s, i] = await Promise.all([api.get('/sessions'), api.get('/images')])
@@ -780,6 +942,7 @@ export default function App() {
                   images={images}
                   onAction={handleAction}
                   onConnect={setSshSession}
+                  onLogs={setLogsSession}
                 />
               ))}
             </div>
@@ -790,6 +953,7 @@ export default function App() {
         {sessions.length > 0 && (
           <section className="text-xs text-zinc-600 flex items-center gap-4">
             <span className="flex items-center gap-1"><Terminal size={11} /> SSH info</span>
+            <span className="flex items-center gap-1"><ScrollText size={11} /> Logs</span>
             <span className="flex items-center gap-1"><Pause size={11} /> Pause (freeze in RAM)</span>
             <span className="flex items-center gap-1"><Square size={11} /> Stop (frees RAM, repos kept)</span>
             <span className="flex items-center gap-1"><Play size={11} /> Resume / Restart</span>
@@ -807,6 +971,7 @@ export default function App() {
       )}
       {showSettings && <SettingsPanel onClose={() => { setShowSettings(false); refresh() }} />}
       {sshSession && <SSHModal session={sshSession} onClose={() => setSshSession(null)} />}
+      {logsSession && <LogsModal session={logsSession} onClose={() => setLogsSession(null)} />}
     </div>
   )
 }

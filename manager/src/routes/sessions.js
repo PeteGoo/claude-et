@@ -6,6 +6,7 @@ import {
   pauseContainer,
   unpauseContainer,
   stopAndRemoveContainer,
+  getContainerLogs,
 } from '../services/docker.js'
 
 export default async function sessionRoutes(fastify) {
@@ -69,6 +70,21 @@ export default async function sessionRoutes(fastify) {
       })
 
     return reply.code(201).send(session)
+  })
+
+  // Container logs
+  fastify.get('/sessions/:id/logs', async (req, reply) => {
+    const session = sessions.getById(req.params.id)
+    if (!session) return reply.code(404).send({ error: 'Session not found' })
+    if (!session.containerId) return reply.code(400).send({ error: 'No running container', logs: '' })
+
+    const tail = Math.min(Math.max(parseInt(req.query.tail) || 200, 1), 10000)
+    try {
+      const logs = await getContainerLogs(session.containerId, tail)
+      return { logs, tail }
+    } catch (err) {
+      return reply.code(500).send({ error: err.message, logs: '' })
+    }
   })
 
   // Pause
