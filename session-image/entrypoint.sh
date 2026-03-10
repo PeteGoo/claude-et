@@ -1,13 +1,16 @@
 #!/bin/bash
 set -e
 
+# ─── Git identity (always set, needed for commits) ───────────────────────────
+git config --global user.email "${GIT_EMAIL:-claude-session@localhost}"
+git config --global user.name "${GIT_NAME:-Claude Session}"
+git config --global init.defaultBranch main
+
 # ─── Git credential setup ────────────────────────────────────────────────────
 # This lets 'git push' work using the GitHub token without any interactive auth
 if [ -n "$GITHUB_TOKEN" ]; then
     git config --global credential.helper store
     git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
-    git config --global user.email "${GIT_EMAIL:-claude-session@localhost}"
-    git config --global user.name "${GIT_NAME:-Claude Session}"
 fi
 
 # ─── SSH: install authorized key if provided ─────────────────────────────────

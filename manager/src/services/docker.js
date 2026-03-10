@@ -110,3 +110,36 @@ export async function listAvailableImages() {
   const images = await docker.listImages()
   return images.flatMap(img => img.RepoTags || []).filter(t => t !== '<none>:<none>')
 }
+
+// ─── Status sync ──────────────────────────────────────────────────────────────
+// Polls actual Docker state and updates the DB if a container has crashed/stopped
+
+export async function syncSessionStatuses() {
+  const allSessions = sessions.getAll()
+
+  for (const session of allSessions) {
+    if (!session.containerId) continue
+    if (!['running', 'starting', 'paused'].includes(session.status)) continue
+
+    const state = await getContainerStatus(session.containerId)
+
+    if (!state) {
+      // Container no longer exists
+      sessions.update(session.id, { status: 'stopped', containerId: null, errorMessage: 'Container disappeared' })
+      continue
+    }
+
+    if (state.Dead || (!state.Running && !state.Paused)) {
+      const exitCode = state.ExitCode
+      const errorMsg = exitCode !== 0
+        ? `Container exited with code ${exitCode}${state.Error ? ': ' + state.Error : ''}`
+        : 'Container stopped'
+      // Clean up the dead container
+      try {
+        const container = docker.getContainer(session.containerId)
+        await container.remove({ force: true })
+      } catch { /* already gone */ }
+      sessions.update(session.id, { status: 'stopped', containerId: null, errorMessage: errorMsg })
+    }
+  }
+}

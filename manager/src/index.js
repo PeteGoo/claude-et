@@ -7,6 +7,7 @@ import { existsSync } from 'fs'
 
 import sessionRoutes from './routes/sessions.js'
 import { imageRoutes, githubRoutes, settingsRoutes } from './routes/other.js'
+import { syncSessionStatuses } from './services/docker.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -66,6 +67,10 @@ const HOST = process.env.HOST || '0.0.0.0'
 try {
   await fastify.listen({ port: PORT, host: HOST })
   console.log(`Claude Session Manager running at http://${HOST}:${PORT}`)
+
+  // Sync container statuses every 10 seconds to catch crashes
+  await syncSessionStatuses()
+  setInterval(() => syncSessionStatuses().catch(console.error), 10_000)
 } catch (err) {
   fastify.log.error(err)
   process.exit(1)
