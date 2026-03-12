@@ -93,10 +93,18 @@ echo '{"projects":{}, "hasCompletedOnboarding": true}' > "$CLAUDE_STATE"
 # If credentials were injected, extract auth info for the state file
 CLAUDE_CREDS="/root/.claude/.credentials.json"
 if [ -f "$CLAUDE_CREDS" ]; then
-    echo "Found Claude credentials, configuring auth state..."
+    echo "Found Claude credentials at $CLAUDE_CREDS"
+    echo "Credentials file size: $(wc -c < "$CLAUDE_CREDS") bytes"
     SUBSCRIPTION=$(jq -r '.claudeAiOauth.subscriptionType // "unknown"' "$CLAUDE_CREDS")
+    echo "Subscription type: $SUBSCRIPTION"
     tmp=$(mktemp)
     jq --arg sub "$SUBSCRIPTION" '.oauthAccount = {"subscriptionType": $sub}' "$CLAUDE_STATE" > "$tmp" && mv "$tmp" "$CLAUDE_STATE"
+    echo "State file after auth setup:"
+    cat "$CLAUDE_STATE"
+else
+    echo "WARNING: No Claude credentials found at $CLAUDE_CREDS"
+    echo "Contents of /root/.claude/:"
+    ls -la /root/.claude/ 2>/dev/null || echo "  (directory does not exist)"
 fi
 
 # Pre-trust working directories

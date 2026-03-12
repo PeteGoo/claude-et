@@ -52,6 +52,10 @@ export async function startContainer(session, baseImage) {
     const credsPath = join(claudeDir, '.credentials.json')
     writeFileSync(credsPath, config.claudeCredentials, { mode: 0o600 })
     binds.push(`${credsPath}:/root/.claude/.credentials.json`)
+    console.log(`[docker] Claude credentials written to ${credsPath} (${config.claudeCredentials.length} bytes)`)
+    console.log(`[docker] Bind mount: ${credsPath}:/root/.claude/.credentials.json`)
+  } else {
+    console.log('[docker] No Claude credentials configured, skipping mount')
   }
 
   const container = await docker.createContainer({
