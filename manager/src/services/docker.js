@@ -34,7 +34,7 @@ function buildRepoEnv(repos) {
 
 // ─── Container operations ─────────────────────────────────────────────────────
 
-export async function startContainer(session, baseImage) {
+export async function startContainer(session, baseImage, options = {}) {
   const config = settings.getAll()
   const sessionsPath = config.sessionsPath || '/mnt/user/claude-sessions'
   const sessionDir = join(sessionsPath, session.id)
@@ -70,6 +70,8 @@ export async function startContainer(session, baseImage) {
       `SESSION_REPOS=${buildRepoEnv(session.repos)}`,
       `PUSH_TO_GITHUB=${pushToGitHub ? 'true' : 'false'}`,
       `TMUX_SESSION=claude-main`,
+      `SESSION_NAME=${session.name || ''}`,
+      `PERMISSION_MODE=${options.permissionMode || ''}`,
     ],
     HostConfig: {
       PortBindings: {

@@ -127,12 +127,13 @@ function SSHModal({ session, onClose }) {
 
 function NewSessionWizard({ images, onClose, onCreated }) {
   const [step, setStep] = useState(1)
+  const [sessionName, setSessionName] = useState('')
   const [selectedImage, setSelectedImage] = useState(images[0]?.id || '')
+  const [permissionMode, setPermissionMode] = useState('')
   const [repoMode, setRepoMode] = useState('existing') // 'existing' | 'new'
   const [selectedRepos, setSelectedRepos] = useState([])
   const [newRepoName, setNewRepoName] = useState('')
-  const [pushToGitHub, setPushToGitHub] = useState(true)
-  const [sessionName, setSessionName] = useState('')
+  const [pushToGitHub, setPushToGitHub] = useState(false)
   const [githubRepos, setGithubRepos] = useState([])
   const [loadingRepos, setLoadingRepos] = useState(false)
   const [repoSearch, setRepoSearch] = useState('')
@@ -143,7 +144,7 @@ function NewSessionWizard({ images, onClose, onCreated }) {
   const [pendingRepos, setPendingRepos] = useState([])
 
   useEffect(() => {
-    if (step === 2) {
+    if (step === 3) {
       setLoadingRepos(true)
       api.get('/github/repos')
         .then(data => { setGithubRepos(Array.isArray(data) ? data : []); setLoadingRepos(false) })
@@ -155,17 +156,22 @@ function NewSessionWizard({ images, onClose, onCreated }) {
     r.fullName.toLowerCase().includes(repoSearch.toLowerCase())
   )
 
+  const addNewRepo = () => {
+    if (!newRepoName.trim()) return
+    if (pendingRepos.find(p => p.name === newRepoName.trim())) return
+    setPendingRepos(prev => [...prev, {
+      name: newRepoName.trim(),
+      cloneUrl: '',
+      localPath: `/repos/${newRepoName.trim()}`,
+      type: 'new',
+      pushToGitHub,
+    }])
+    setNewRepoName('')
+  }
+
   const addRepo = () => {
     if (repoMode === 'new') {
-      if (!newRepoName.trim()) return
-      setPendingRepos(prev => [...prev, {
-        name: newRepoName.trim(),
-        cloneUrl: '',
-        localPath: `/repos/${newRepoName.trim()}`,
-        type: 'new',
-        pushToGitHub,
-      }])
-      setNewRepoName('')
+      addNewRepo()
     } else {
       const toAdd = githubRepos
         .filter(r => selectedRepos.includes(r.fullName) && !pendingRepos.find(p => p.name === r.name))
@@ -187,16 +193,25 @@ function NewSessionWizard({ images, onClose, onCreated }) {
     )
   }
 
-  const derivedName = sessionName || pendingRepos.map(r => r.name).join(', ') || 'New Session'
+  // Auto-add typed new repo when advancing from repos step
+  const advanceFromRepos = () => {
+    if (repoMode === 'new' && newRepoName.trim()) {
+      addNewRepo()
+    }
+    setStep(4)
+  }
+
+  const canAdvanceRepos = pendingRepos.length > 0 || (repoMode === 'new' && newRepoName.trim())
 
   const launch = async () => {
     if (!pendingRepos.length) { setError('Add at least one repo'); return }
     setCreating(true)
     try {
       const session = await api.post('/sessions', {
-        name: derivedName,
+        name: sessionName,
         baseImageId: selectedImage,
         repos: pendingRepos,
+        permissionMode: permissionMode || undefined,
       })
       if (session.error) throw new Error(session.error)
       onCreated(session)
@@ -215,7 +230,7 @@ function NewSessionWizard({ images, onClose, onCreated }) {
           <h2 className="font-semibold text-white">New Session</h2>
           <div className="flex items-center gap-3">
             <div className="flex gap-1">
-              {[1, 2, 3].map(n => (
+              {[1, 2, 3, 4].map(n => (
                 <div key={n} className={`h-1.5 w-6 rounded-full transition-colors ${step >= n ? 'bg-violet-500' : 'bg-zinc-700'}`} />
               ))}
             </div>
@@ -226,8 +241,24 @@ function NewSessionWizard({ images, onClose, onCreated }) {
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-4">
 
-          {/* Step 1: Pick image */}
+          {/* Step 1: Session name */}
           {step === 1 && (
+            <div className="space-y-3">
+              <p className="text-sm text-zinc-400">Name your session</p>
+              <input
+                value={sessionName}
+                onChange={e => setSessionName(e.target.value)}
+                placeholder="My session"
+                autoFocus
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-violet-500"
+                onKeyDown={e => { if (e.key === 'Enter' && sessionName.trim()) setStep(2) }}
+              />
+              <p className="text-xs text-zinc-600">This name is shown in claude.ai/code when using remote control</p>
+            </div>
+          )}
+
+          {/* Step 2: Pick image */}
+          {step === 2 && (
             <div className="space-y-3">
               <p className="text-sm text-zinc-400">Choose an environment for this session</p>
               {images.length === 0 ? (
@@ -263,8 +294,8 @@ function NewSessionWizard({ images, onClose, onCreated }) {
             </div>
           )}
 
-          {/* Step 2: Repos */}
-          {step === 2 && (
+          {/* Step 3: Repos */}
+          {step === 3 && (
             <div className="space-y-4">
               {/* Pending repos */}
               {pendingRepos.length > 0 && (
@@ -344,7 +375,9 @@ function NewSessionWizard({ images, onClose, onCreated }) {
                   <input
                     value={newRepoName}
                     onChange={e => setNewRepoName(e.target.value.replace(/\s/g, '-'))}
+                    onKeyDown={e => { if (e.key === 'Enter' && newRepoName.trim()) addNewRepo() }}
                     placeholder="repo-name"
+                    autoFocus
                     className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-violet-500 font-mono"
                   />
                   <label className="flex items-center gap-2 text-sm text-zinc-400 cursor-pointer">
@@ -352,7 +385,7 @@ function NewSessionWizard({ images, onClose, onCreated }) {
                       className="rounded border-zinc-600 text-violet-500" />
                     Create & push to GitHub org
                   </label>
-                  <button onClick={addRepo} disabled={!newRepoName.trim()}
+                  <button onClick={addNewRepo} disabled={!newRepoName.trim()}
                     className="text-sm text-violet-400 hover:text-violet-300 disabled:opacity-40 disabled:cursor-not-allowed">
                     + Add repo
                   </button>
@@ -361,23 +394,24 @@ function NewSessionWizard({ images, onClose, onCreated }) {
             </div>
           )}
 
-          {/* Step 3: Review */}
-          {step === 3 && (
+          {/* Step 4: Review */}
+          {step === 4 && (
             <div className="space-y-4">
-              <div>
-                <label className="text-xs text-zinc-500 uppercase tracking-wide block mb-2">Session name</label>
-                <input
-                  value={sessionName}
-                  onChange={e => setSessionName(e.target.value)}
-                  placeholder={derivedName}
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-violet-500"
-                />
-              </div>
               <div className="bg-zinc-800 rounded-xl p-4 space-y-3 text-sm">
+                <div className="flex justify-between text-zinc-400">
+                  <span>Session</span>
+                  <span className="text-white">{sessionName}</span>
+                </div>
                 <div className="flex justify-between text-zinc-400">
                   <span>Environment</span>
                   <span className="text-white">{images.find(i => i.id === selectedImage)?.alias}</span>
                 </div>
+                {permissionMode && (
+                  <div className="flex justify-between text-zinc-400">
+                    <span>Permission mode</span>
+                    <span className="text-white">{permissionMode}</span>
+                  </div>
+                )}
                 <div className="border-t border-zinc-700 pt-3">
                   <p className="text-zinc-400 mb-2">Repos</p>
                   {pendingRepos.map((r, i) => (
@@ -391,6 +425,23 @@ function NewSessionWizard({ images, onClose, onCreated }) {
                   ))}
                 </div>
               </div>
+
+              {/* Permission mode */}
+              <div>
+                <label className="text-xs text-zinc-500 uppercase tracking-wide block mb-2">Permission mode (optional)</label>
+                <select
+                  value={permissionMode}
+                  onChange={e => setPermissionMode(e.target.value)}
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500"
+                >
+                  <option value="">Default</option>
+                  <option value="plan">Plan — suggest changes, ask before acting</option>
+                  <option value="acceptEdits">Accept edits — auto-approve file changes</option>
+                  <option value="dontAsk">Don't ask — auto-approve all tools</option>
+                  <option value="bypassPermissions">Bypass permissions — skip all checks</option>
+                </select>
+              </div>
+
               {error && (
                 <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-sm text-red-400">
                   <AlertCircle size={14} />{error}
@@ -407,10 +458,10 @@ function NewSessionWizard({ images, onClose, onCreated }) {
             <ChevronLeft size={16} />
             {step === 1 ? 'Cancel' : 'Back'}
           </button>
-          {step < 3 ? (
+          {step < 4 ? (
             <button
-              onClick={() => setStep(s => s + 1)}
-              disabled={step === 1 && !selectedImage || step === 2 && pendingRepos.length === 0}
+              onClick={() => step === 3 ? advanceFromRepos() : setStep(s => s + 1)}
+              disabled={step === 1 && !sessionName.trim() || step === 2 && !selectedImage || step === 3 && !canAdvanceRepos}
               className="flex items-center gap-1.5 bg-violet-600 hover:bg-violet-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
               Next <ChevronRight size={16} />
             </button>

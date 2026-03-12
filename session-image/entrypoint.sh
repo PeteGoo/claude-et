@@ -120,21 +120,28 @@ for d in /repos/*/; do
 done
 
 # ─── Start tmux session with Claude Code ─────────────────────────────────────
-SESSION_NAME="${TMUX_SESSION:-claude-main}"
+TMUX_NAME="${TMUX_SESSION:-claude-main}"
 CLAUDE_CMD="claude remote-control"
+if [ -n "$SESSION_NAME" ]; then
+    CLAUDE_CMD="$CLAUDE_CMD --name \"$SESSION_NAME\""
+fi
+if [ -n "$PERMISSION_MODE" ]; then
+    CLAUDE_CMD="$CLAUDE_CMD --permission-mode $PERMISSION_MODE"
+fi
 
-tmux new-session -d -s "$SESSION_NAME" -c "$WORK_DIR"
+tmux new-session -d -s "$TMUX_NAME" -c "$WORK_DIR"
 
 if [ "$REPO_COUNT" -gt 1 ]; then
     # Multiple repos — show a quick summary then start claude
-    tmux send-keys -t "$SESSION_NAME" \
+    tmux send-keys -t "$TMUX_NAME" \
         "echo 'Repos available:' && ls /repos && echo '' && cd /repos && $CLAUDE_CMD" Enter
 else
-    tmux send-keys -t "$SESSION_NAME" "$CLAUDE_CMD" Enter
+    tmux send-keys -t "$TMUX_NAME" "$CLAUDE_CMD" Enter
 fi
 
-echo "Session '$SESSION_NAME' started in $WORK_DIR"
-echo "Connect with: tmux attach -t $SESSION_NAME"
+echo "Session '$TMUX_NAME' started in $WORK_DIR"
+echo "Claude command: $CLAUDE_CMD"
+echo "Connect with: tmux attach -t $TMUX_NAME"
 
 # Keep container alive — tail a log or just sleep loop
 # sshd is already running as a daemon so we just wait

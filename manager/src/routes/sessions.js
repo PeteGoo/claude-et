@@ -38,7 +38,7 @@ export default async function sessionRoutes(fastify) {
 
   // Create session
   fastify.post('/sessions', async (req, reply) => {
-    const { name, baseImageId, repos } = req.body
+    const { name, baseImageId, repos, permissionMode } = req.body
 
     if (!baseImageId) return reply.code(400).send({ error: 'baseImageId required' })
     if (!repos?.length) return reply.code(400).send({ error: 'At least one repo required' })
@@ -60,7 +60,7 @@ export default async function sessionRoutes(fastify) {
     })
 
     // Start container async — don't block the response
-    startContainer(session, image)
+    startContainer(session, image, { permissionMode })
       .then(containerId => {
         sessions.update(id, { containerId, status: 'running' })
       })
