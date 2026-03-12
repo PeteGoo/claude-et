@@ -16,15 +16,17 @@ RUN apt-get update && apt-get install -y \
     gnupg \
     lsb-release \
     build-essential \
+    ncurses-bin \
     && rm -rf /var/lib/apt/lists/*
 
-# Node.js 20
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y nodejs \
-    && rm -rf /var/lib/apt/lists/*
+# Claude Code (native install)
+RUN curl -fsSL https://claude.ai/install.sh | bash
+ENV PATH="/root/.claude/local/bin:${PATH}"
 
-# Claude Code
-RUN npm install -g @anthropic-ai/claude-code
+# Ghostty terminfo
+RUN curl -fsSL https://ghostty.org/ghostty.terminfo -o /tmp/ghostty.terminfo \
+    && tic -x /tmp/ghostty.terminfo \
+    && rm /tmp/ghostty.terminfo
 
 # SSH setup
 RUN mkdir /var/run/sshd && \

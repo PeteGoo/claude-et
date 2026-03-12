@@ -85,17 +85,35 @@ if [ "$REPO_COUNT" -eq 1 ]; then
     WORK_DIR="/repos/$(ls /repos | head -1)"
 fi
 
+# ─── Pre-trust working directories for Claude Code ──────────────────────────
+# Write hasTrustDialogAccepted for each repo dir (and /repos itself) so Claude
+# doesn't prompt interactively when it starts.
+CLAUDE_STATE="/root/.claude.json"
+echo '{"projects":{}}' > "$CLAUDE_STATE"
+
+trust_dir() {
+    local dir="$1"
+    local tmp=$(mktemp)
+    jq --arg d "$dir" '.projects[$d] = {"hasTrustDialogAccepted": true, "hasCompletedProjectOnboarding": true}' "$CLAUDE_STATE" > "$tmp" && mv "$tmp" "$CLAUDE_STATE"
+}
+
+trust_dir "/repos"
+for d in /repos/*/; do
+    [ -d "$d" ] && trust_dir "$(realpath "$d")"
+done
+
 # ─── Start tmux session with Claude Code ─────────────────────────────────────
 SESSION_NAME="${TMUX_SESSION:-claude-main}"
+CLAUDE_CMD="claude remote-control"
 
 tmux new-session -d -s "$SESSION_NAME" -c "$WORK_DIR"
 
 if [ "$REPO_COUNT" -gt 1 ]; then
     # Multiple repos — show a quick summary then start claude
     tmux send-keys -t "$SESSION_NAME" \
-        "echo 'Repos available:' && ls /repos && echo '' && cd /repos && claude" Enter
+        "echo 'Repos available:' && ls /repos && echo '' && cd /repos && $CLAUDE_CMD" Enter
 else
-    tmux send-keys -t "$SESSION_NAME" "claude" Enter
+    tmux send-keys -t "$SESSION_NAME" "$CLAUDE_CMD" Enter
 fi
 
 echo "Session '$SESSION_NAME' started in $WORK_DIR"
