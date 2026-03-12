@@ -21,12 +21,11 @@ RUN apt-get update && apt-get install -y \
 
 # Claude Code (native install)
 RUN curl -fsSL https://claude.ai/install.sh | bash
-ENV PATH="/root/.claude/local/bin:${PATH}"
+ENV PATH="/root/.local/bin:${PATH}"
 
 # Ghostty terminfo
-RUN curl -fsSL https://ghostty.org/ghostty.terminfo -o /tmp/ghostty.terminfo \
-    && tic -x /tmp/ghostty.terminfo \
-    && rm /tmp/ghostty.terminfo
+COPY ghostty.terminfo /tmp/ghostty.terminfo
+RUN tic -x /tmp/ghostty.terminfo && rm /tmp/ghostty.terminfo
 
 # SSH setup
 RUN mkdir /var/run/sshd && \
