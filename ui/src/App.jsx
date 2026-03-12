@@ -143,12 +143,19 @@ function NewSessionWizard({ images, onClose, onCreated }) {
   // Pending repos list — can mix new + existing
   const [pendingRepos, setPendingRepos] = useState([])
 
+  const [githubError, setGithubError] = useState('')
+
   useEffect(() => {
     if (step === 3) {
       setLoadingRepos(true)
+      setGithubError('')
       api.get('/github/repos')
-        .then(data => { setGithubRepos(Array.isArray(data) ? data : []); setLoadingRepos(false) })
-        .catch(() => { setGithubRepos([]); setLoadingRepos(false) })
+        .then(data => {
+          if (data.error) { setGithubError(data.error); setGithubRepos([]); setRepoMode('new') }
+          else { setGithubRepos(Array.isArray(data) ? data : []) }
+          setLoadingRepos(false)
+        })
+        .catch(() => { setGithubRepos([]); setLoadingRepos(false); setRepoMode('new') })
     }
   }, [step])
 
@@ -327,7 +334,11 @@ function NewSessionWizard({ images, onClose, onCreated }) {
                 ))}
               </div>
 
-              {repoMode === 'existing' && (
+              {repoMode === 'existing' && githubError && (
+                <p className="text-sm text-zinc-500">{githubError}</p>
+              )}
+
+              {repoMode === 'existing' && !githubError && (
                 <div className="space-y-2">
                   <div className="relative">
                     <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
