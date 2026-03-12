@@ -72,20 +72,24 @@ export async function githubRoutes(fastify) {
 export async function settingsRoutes(fastify) {
   fastify.get('/settings', async () => {
     const all = settings.getAll()
-    // Mask token — never send full token to UI
+    // Mask secrets — never send full values to UI
     return {
       ...all,
       githubToken: all.githubToken ? '••••••••' + all.githubToken.slice(-4) : '',
       githubTokenSet: !!all.githubToken,
+      claudeCredentials: undefined,
+      claudeCredentialsSet: !!all.claudeCredentials,
+      claudeCredentialsSummary: summariseClaudeCredentials(all.claudeCredentials),
     }
   })
 
   fastify.put('/settings', async (req, reply) => {
     const body = { ...req.body }
-    // Don't overwrite token with masked value
+    // Don't overwrite secrets with masked/placeholder values
     if (body.githubToken?.startsWith('••••')) {
       delete body.githubToken
     }
+    delete body.claudeCredentials // handled by dedicated endpoint
     return settings.setAll(body)
   })
 
@@ -97,4 +101,42 @@ export async function settingsRoutes(fastify) {
     const validation = await validateToken().catch(err => ({ valid: false, error: err.message }))
     return { saved: true, ...validation }
   })
+
+  // Claude credentials endpoint
+  fastify.put('/settings/claude-credentials', async (req, reply) => {
+    const { credentials } = req.body
+    if (!credentials) return reply.code(400).send({ error: 'credentials required' })
+    // Validate it's valid JSON with the expected shape
+    try {
+      const parsed = JSON.parse(credentials)
+      if (!parsed.claudeAiOauth?.accessToken) {
+        return reply.code(400).send({ error: 'Invalid credentials: missing claudeAiOauth.accessToken' })
+      }
+    } catch {
+      return reply.code(400).send({ error: 'Invalid JSON' })
+    }
+    settings.set('claudeCredentials', credentials)
+    return { saved: true, ...summariseClaudeCredentials(credentials) }
+  })
+
+  fastify.delete('/settings/claude-credentials', async (req, reply) => {
+    settings.set('claudeCredentials', '')
+    return { deleted: true }
+  })
+}
+
+function summariseClaudeCredentials(raw) {
+  if (!raw) return null
+  try {
+    const creds = JSON.parse(raw)
+    const oauth = creds.claudeAiOauth
+    if (!oauth) return null
+    return {
+      subscriptionType: oauth.subscriptionType || 'unknown',
+      expiresAt: oauth.expiresAt ? new Date(oauth.expiresAt).toISOString() : null,
+      hasRefreshToken: !!oauth.refreshToken,
+    }
+  } catch {
+    return null
+  }
 }

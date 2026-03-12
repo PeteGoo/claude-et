@@ -173,6 +173,7 @@ const DEFAULTS = {
   gitEmail: 'claude-session@localhost',
   gitName: 'Claude Session',
   sshPublicKey: '',
+  claudeCredentials: '',
 }
 
 export const settings = {

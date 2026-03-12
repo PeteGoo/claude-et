@@ -1,6 +1,6 @@
 import Docker from 'dockerode'
 import { sessions, settings } from './db.js'
-import { mkdirSync } from 'fs'
+import { mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
 const docker = new Docker({ socketPath: '/var/run/docker.sock' })
@@ -44,6 +44,16 @@ export async function startContainer(session, baseImage) {
 
   const pushToGitHub = session.repos.some(r => r.type === 'new' && r.pushToGitHub)
 
+  // Write Claude credentials file if configured
+  const binds = [`${reposDir}:/repos`]
+  if (config.claudeCredentials) {
+    const claudeDir = join(sessionDir, '.claude')
+    mkdirSync(claudeDir, { recursive: true })
+    const credsPath = join(claudeDir, '.credentials.json')
+    writeFileSync(credsPath, config.claudeCredentials, { mode: 0o600 })
+    binds.push(`${credsPath}:/root/.claude/.credentials.json:ro`)
+  }
+
   const container = await docker.createContainer({
     name: `claude-session-${session.id}`,
     Image: baseImage.dockerImage,
@@ -61,9 +71,7 @@ export async function startContainer(session, baseImage) {
       PortBindings: {
         '22/tcp': [{ HostPort: String(session.sshPort) }],
       },
-      Binds: [
-        `${reposDir}:/repos`,
-      ],
+      Binds: binds,
       RestartPolicy: { Name: 'no' },
     },
     ExposedPorts: { '22/tcp': {} },
