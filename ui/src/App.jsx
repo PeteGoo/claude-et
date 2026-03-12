@@ -457,11 +457,17 @@ function SettingsPanel({ onClose }) {
   }
 
   const saveClaudeCreds = async () => {
-    const result = await api.put('/settings/claude-credentials', { credentials: claudeCredsInput })
-    setClaudeCredsStatus(result)
-    if (result.saved) {
-      setClaudeCredsInput('')
-      setConfig(c => ({ ...c, claudeCredentialsSet: true, claudeCredentialsSummary: result }))
+    try {
+      const result = await api.put('/settings/claude-credentials', { credentials: claudeCredsInput })
+      console.log('[claude-creds] save result:', result)
+      setClaudeCredsStatus(result)
+      if (result.saved) {
+        setClaudeCredsInput('')
+        setConfig(c => ({ ...c, claudeCredentialsSet: true, claudeCredentialsSummary: result }))
+      }
+    } catch (err) {
+      console.error('[claude-creds] save error:', err)
+      setClaudeCredsStatus({ error: err.message })
     }
   }
 

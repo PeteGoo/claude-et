@@ -122,17 +122,25 @@ export async function settingsRoutes(fastify) {
   // Claude credentials endpoint
   fastify.put('/settings/claude-credentials', async (req, reply) => {
     const { credentials } = req.body
+    console.log(`[claude-creds] PUT received, credentials type: ${typeof credentials}, length: ${credentials?.length ?? 'null'}`)
     if (!credentials) return reply.code(400).send({ error: 'credentials required' })
     // Validate it's valid JSON with the expected shape
     try {
       const parsed = JSON.parse(credentials)
       if (!parsed.claudeAiOauth?.accessToken) {
+        console.log('[claude-creds] Validation failed: missing claudeAiOauth.accessToken')
         return reply.code(400).send({ error: 'Invalid credentials: missing claudeAiOauth.accessToken' })
       }
-    } catch {
+      console.log(`[claude-creds] Validation passed, subscription: ${parsed.claudeAiOauth.subscriptionType}`)
+    } catch (e) {
+      console.log(`[claude-creds] JSON parse failed: ${e.message}`)
       return reply.code(400).send({ error: 'Invalid JSON' })
     }
     settings.set('claudeCredentials', credentials)
+    console.log(`[claude-creds] Saved ${credentials.length} bytes to DB`)
+    // Verify it was saved
+    const verify = settings.get('claudeCredentials')
+    console.log(`[claude-creds] Verify read-back: ${verify?.length ?? 0} bytes`)
     return { saved: true, ...summariseClaudeCredentials(credentials) }
   })
 
