@@ -72,6 +72,8 @@ export async function githubRoutes(fastify) {
 export async function settingsRoutes(fastify) {
   fastify.get('/settings', async () => {
     const all = settings.getAll()
+    const claudeCredsLength = all.claudeCredentials ? all.claudeCredentials.length : 0
+    console.log(`[settings] claudeCredentials stored: ${claudeCredsLength} bytes`)
     // Mask secrets — never send full values to UI
     return {
       ...all,
@@ -89,7 +91,11 @@ export async function settingsRoutes(fastify) {
     if (body.githubToken?.startsWith('••••')) {
       delete body.githubToken
     }
-    delete body.claudeCredentials // handled by dedicated endpoint
+    // Remove computed/secret fields handled by dedicated endpoints
+    delete body.claudeCredentials
+    delete body.claudeCredentialsSet
+    delete body.claudeCredentialsSummary
+    delete body.githubTokenSet
     return settings.setAll(body)
   })
 
