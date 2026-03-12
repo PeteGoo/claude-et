@@ -88,7 +88,7 @@ fi
 # ─── Claude Code state setup ─────────────────────────────────────────────────
 # Build ~/.claude.json with trust + auth state so Claude starts without prompts.
 CLAUDE_STATE="/root/.claude.json"
-echo '{"projects":{}, "hasCompletedOnboarding": true}' > "$CLAUDE_STATE"
+echo '{"projects":{}, "hasCompletedOnboarding": true, "remoteDialogSeen": true}' > "$CLAUDE_STATE"
 
 # If credentials were injected, extract auth info for the state file
 CLAUDE_CREDS="/root/.claude/.credentials.json"
