@@ -85,12 +85,21 @@ if [ "$REPO_COUNT" -eq 1 ]; then
     WORK_DIR="/repos/$(ls /repos | head -1)"
 fi
 
-# ─── Pre-trust working directories for Claude Code ──────────────────────────
-# Write hasTrustDialogAccepted for each repo dir (and /repos itself) so Claude
-# doesn't prompt interactively when it starts.
+# ─── Claude Code state setup ─────────────────────────────────────────────────
+# Build ~/.claude.json with trust + auth state so Claude starts without prompts.
 CLAUDE_STATE="/root/.claude.json"
-echo '{"projects":{}}' > "$CLAUDE_STATE"
+echo '{"projects":{}, "hasCompletedOnboarding": true}' > "$CLAUDE_STATE"
 
+# If credentials were injected, extract auth info for the state file
+CLAUDE_CREDS="/root/.claude/.credentials.json"
+if [ -f "$CLAUDE_CREDS" ]; then
+    echo "Found Claude credentials, configuring auth state..."
+    SUBSCRIPTION=$(jq -r '.claudeAiOauth.subscriptionType // "unknown"' "$CLAUDE_CREDS")
+    tmp=$(mktemp)
+    jq --arg sub "$SUBSCRIPTION" '.oauthAccount = {"subscriptionType": $sub}' "$CLAUDE_STATE" > "$tmp" && mv "$tmp" "$CLAUDE_STATE"
+fi
+
+# Pre-trust working directories
 trust_dir() {
     local dir="$1"
     local tmp=$(mktemp)

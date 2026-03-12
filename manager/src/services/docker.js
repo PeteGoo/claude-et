@@ -51,7 +51,7 @@ export async function startContainer(session, baseImage) {
     mkdirSync(claudeDir, { recursive: true })
     const credsPath = join(claudeDir, '.credentials.json')
     writeFileSync(credsPath, config.claudeCredentials, { mode: 0o600 })
-    binds.push(`${credsPath}:/root/.claude/.credentials.json:ro`)
+    binds.push(`${credsPath}:/root/.claude/.credentials.json`)
   }
 
   const container = await docker.createContainer({
