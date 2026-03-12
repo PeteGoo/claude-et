@@ -99,6 +99,17 @@ export async function settingsRoutes(fastify) {
     return settings.setAll(body)
   })
 
+  // Diagnostic: check if credentials are actually stored
+  fastify.get('/settings/claude-credentials/status', async () => {
+    const raw = settings.get('claudeCredentials')
+    return {
+      stored: !!raw,
+      length: raw ? raw.length : 0,
+      validJson: (() => { try { JSON.parse(raw); return true } catch { return false } })(),
+      hasOauthToken: (() => { try { return !!JSON.parse(raw)?.claudeAiOauth?.accessToken } catch { return false } })(),
+    }
+  })
+
   // Dedicated token endpoint so we don't accidentally expose it
   fastify.put('/settings/github-token', async (req, reply) => {
     const { token } = req.body
