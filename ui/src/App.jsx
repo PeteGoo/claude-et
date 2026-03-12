@@ -437,7 +437,7 @@ function SettingsPanel({ onClose }) {
   const [claudeCredsStatus, setClaudeCredsStatus] = useState(null)
   const [images, setImages] = useState([])
   const [newImage, setNewImage] = useState({ alias: '', dockerImage: '', description: '' })
-  const [tab, setTab] = useState('general') // 'general' | 'images'
+  const [tab, setTab] = useState('general') // 'general' | 'claude' | 'images'
 
   useEffect(() => {
     api.get('/settings').then(setConfig)
@@ -493,7 +493,7 @@ function SettingsPanel({ onClose }) {
 
         {/* Tabs */}
         <div className="flex border-b border-zinc-700 shrink-0">
-          {[['general', 'General'], ['images', 'Base Images']].map(([id, label]) => (
+          {[['general', 'General'], ['claude', 'Claude'], ['images', 'Base Images']].map(([id, label]) => (
             <button key={id} onClick={() => setTab(id)}
               className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 ${
                 tab === id ? 'border-violet-500 text-white' : 'border-transparent text-zinc-400 hover:text-white'
@@ -540,52 +540,6 @@ function SettingsPanel({ onClose }) {
                     className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-violet-500"
                   />
                 </div>
-              </section>
-
-              {/* Claude Credentials */}
-              <section className="space-y-3">
-                <h3 className="text-sm font-medium text-white flex items-center gap-2"><Key size={14} /> Claude Code Auth</h3>
-                {config.claudeCredentialsSet ? (
-                  <div className="space-y-2">
-                    <div className="bg-zinc-800 rounded-lg p-3 text-sm space-y-1">
-                      <p className="text-emerald-400 flex items-center gap-1.5"><Check size={13} /> Credentials configured</p>
-                      {config.claudeCredentialsSummary && (
-                        <>
-                          <p className="text-xs text-zinc-400">Subscription: <span className="text-zinc-300">{config.claudeCredentialsSummary.subscriptionType}</span></p>
-                          {config.claudeCredentialsSummary.expiresAt && (
-                            <p className="text-xs text-zinc-400">Expires: <span className="text-zinc-300">{new Date(config.claudeCredentialsSummary.expiresAt).toLocaleDateString()}</span></p>
-                          )}
-                          <p className="text-xs text-zinc-400">Auto-refresh: <span className="text-zinc-300">{config.claudeCredentialsSummary.hasRefreshToken ? 'Yes' : 'No'}</span></p>
-                        </>
-                      )}
-                    </div>
-                    <button onClick={clearClaudeCreds}
-                      className="text-xs text-red-400 hover:text-red-300 transition-colors">
-                      Remove credentials
-                    </button>
-                  </div>
-                ) : (
-                  <div>
-                    <label className="text-xs text-zinc-500 block mb-1.5">Credentials JSON</label>
-                    <textarea
-                      value={claudeCredsInput}
-                      onChange={e => setClaudeCredsInput(e.target.value)}
-                      placeholder='Paste contents of ~/.claude/.credentials.json'
-                      rows={4}
-                      className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-violet-500 font-mono resize-none"
-                    />
-                    <div className="flex items-center justify-between mt-1.5">
-                      <p className="text-xs text-zinc-600">Find this file at <span className="font-mono">~/.claude/.credentials.json</span> on your local machine</p>
-                      <button onClick={saveClaudeCreds} disabled={!claudeCredsInput}
-                        className="px-3 py-1.5 bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white text-sm rounded-lg transition-colors">
-                        Save
-                      </button>
-                    </div>
-                    {claudeCredsStatus?.error && (
-                      <p className="text-xs text-red-400 mt-1">{claudeCredsStatus.error}</p>
-                    )}
-                  </div>
-                )}
               </section>
 
               {/* Tailscale */}
@@ -642,6 +596,55 @@ function SettingsPanel({ onClose }) {
                       className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500" />
                   </div>
                 </div>
+              </section>
+            </div>
+          ) : tab === 'claude' ? (
+            /* Claude tab */
+            <div className="space-y-5">
+              <section className="space-y-3">
+                <h3 className="text-sm font-medium text-white flex items-center gap-2"><Key size={14} /> Claude Code Auth</h3>
+                <p className="text-xs text-zinc-500">Credentials are injected into new session containers so Claude Code starts pre-authenticated.</p>
+                {config.claudeCredentialsSet ? (
+                  <div className="space-y-2">
+                    <div className="bg-zinc-800 rounded-lg p-3 text-sm space-y-1">
+                      <p className="text-emerald-400 flex items-center gap-1.5"><Check size={13} /> Credentials configured</p>
+                      {config.claudeCredentialsSummary && (
+                        <>
+                          <p className="text-xs text-zinc-400">Subscription: <span className="text-zinc-300">{config.claudeCredentialsSummary.subscriptionType}</span></p>
+                          {config.claudeCredentialsSummary.expiresAt && (
+                            <p className="text-xs text-zinc-400">Expires: <span className="text-zinc-300">{new Date(config.claudeCredentialsSummary.expiresAt).toLocaleDateString()}</span></p>
+                          )}
+                          <p className="text-xs text-zinc-400">Auto-refresh: <span className="text-zinc-300">{config.claudeCredentialsSummary.hasRefreshToken ? 'Yes' : 'No'}</span></p>
+                        </>
+                      )}
+                    </div>
+                    <button onClick={clearClaudeCreds}
+                      className="text-xs text-red-400 hover:text-red-300 transition-colors">
+                      Remove credentials
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="text-xs text-zinc-500 block mb-1.5">Credentials JSON</label>
+                    <textarea
+                      value={claudeCredsInput}
+                      onChange={e => setClaudeCredsInput(e.target.value)}
+                      placeholder='Paste contents of ~/.claude/.credentials.json'
+                      rows={6}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-violet-500 font-mono resize-none"
+                    />
+                    <div className="flex items-center justify-between mt-1.5">
+                      <p className="text-xs text-zinc-600">Find this file at <span className="font-mono">~/.claude/.credentials.json</span> on your local machine</p>
+                      <button onClick={saveClaudeCreds} disabled={!claudeCredsInput}
+                        className="px-3 py-1.5 bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white text-sm rounded-lg transition-colors">
+                        Save
+                      </button>
+                    </div>
+                    {claudeCredsStatus?.error && (
+                      <p className="text-xs text-red-400 mt-1">{claudeCredsStatus.error}</p>
+                    )}
+                  </div>
+                )}
               </section>
             </div>
           ) : (
