@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node --watch src/index.js"
+    "dev": "node --watch src/index.js",
+    "test": "find src -name '*.test.js' ! -name '*.integration.test.js' -exec node --test {} +",
+    "test:integration": "node --test src/**/*.integration.test.js"
   },
   "dependencies": {
     "fastify": "^5.2.1",

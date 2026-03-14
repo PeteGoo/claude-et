@@ -77,6 +77,44 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.OWNER }}/claude-et-session:latest
             ${{ env.REGISTRY }}/${{ env.OWNER }}/claude-et-session:${{ github.sha }}
 
+  integration-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set lowercase owner
+        run: echo "OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build base session image for testing
+        uses: docker/build-push-action@v6
+        with:
+          context: ./images/base
+          push: false
+          tags: claude-et-session-base:test
+
+      - name: Install manager dependencies
+        working-directory: manager
+        run: npm install
+
+      - name: Run integration tests
+        working-directory: manager
+        run: npm run test:integration
+
   build-session-dotnet:
     needs: build-session-base
     runs-on: ubuntu-latest

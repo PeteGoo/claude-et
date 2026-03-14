@@ -9,6 +9,9 @@ RUN npm install --production
 
 COPY src/ ./src/
 
+# Run tests during build (uses node:test built-in runner, no dev deps needed)
+RUN npm test
+
 # UI dist is copied in by CI before docker build
 COPY ui-dist/ ./ui-dist/
 

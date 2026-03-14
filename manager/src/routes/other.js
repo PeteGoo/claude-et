@@ -3,6 +3,7 @@ import Docker from 'dockerode'
 import { baseImages, settings } from '../services/db.js'
 import { listAvailableImages, execInContainer, updateAllSessionCredentials } from '../services/docker.js'
 import { listRepos, createRepo, validateToken } from '../services/github.js'
+import { pollContainerForAuthUrl } from '../services/auth-login.js'
 
 const docker = new Docker({ socketPath: '/var/run/docker.sock' })
 
@@ -174,7 +175,7 @@ export async function settingsRoutes(fastify) {
       const container = await docker.createContainer({
         Image: LOGIN_IMAGE,
         Entrypoint: ['bash', '-c'],
-        Cmd: ['claude login 2>&1 && tail -f /dev/null'],
+        Cmd: ['claude auth login 2>&1 && tail -f /dev/null'],
         Tty: true,
         HostConfig: {
           RestartPolicy: { Name: 'no' },
@@ -184,32 +185,13 @@ export async function settingsRoutes(fastify) {
       await container.start()
       const containerId = container.id
 
-      // Poll logs for auth URL (up to 60 seconds)
-      let authUrl = null
-      const deadline = Date.now() + 60000
-      while (Date.now() < deadline) {
-        await new Promise(r => setTimeout(r, 2000))
-        // Check container is still running
-        const inspect = await container.inspect()
-        const status = inspect.State.Status
-        fastify.log.info(`[auth-login] container status: ${status}`)
-        if (status === 'exited' || status === 'dead') {
-          fastify.log.error(`[auth-login] container exited prematurely (exit code ${inspect.State.ExitCode})`)
-          break
-        }
-        const logBuffer = await container.logs({ stdout: true, stderr: true, tail: 50 })
-        const logs = typeof logBuffer === 'string' ? logBuffer : logBuffer.toString('utf8')
-        // Strip Docker stream headers (8-byte prefix per frame when Tty is false)
-        const cleanLogs = logs.replace(/[\x00-\x08]/g, '').trim()
-        fastify.log.info(`[auth-login] logs (${logBuffer.length} bytes): ${cleanLogs.substring(0, 500)}`)
-        const match = cleanLogs.match(/https:\/\/[^\s]+/)
-        if (match) {
-          authUrl = match[0]
-          break
-        }
-      }
+      const result = await pollContainerForAuthUrl(container, {
+        deadlineMs: 60000,
+        pollIntervalMs: 2000,
+        log: (msg) => fastify.log.info(`[auth-login] ${msg}`),
+      })
 
-      if (!authUrl) {
+      if (!result) {
         // Grab final logs before cleanup
         try {
           const finalLogs = await container.logs({ stdout: true, stderr: true, tail: 100 })
@@ -222,7 +204,7 @@ export async function settingsRoutes(fastify) {
       }
 
       loginFlowState = { containerId, startedAt: Date.now() }
-      return { containerId, authUrl }
+      return { containerId, authUrl: result.authUrl }
     } catch (err) {
       return reply.code(500).send({ error: err.message })
     }
