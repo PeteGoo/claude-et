@@ -5,7 +5,7 @@ import { LoginFlowSession } from './auth-login.js'
 const TEST_IMAGE = process.env.TEST_IMAGE || 'claude-et-session-base:test'
 
 describe('LoginFlowSession integration', () => {
-  it('extracts auth URL from real claude setup-token output', async () => {
+  it('extracts auth URL from real claude auth login output', async () => {
     const session = new LoginFlowSession({
       log: (msg) => console.log(`[integration-test] ${msg}`),
       image: TEST_IMAGE,
@@ -20,6 +20,7 @@ describe('LoginFlowSession integration', () => {
       assert.ok(authUrl, 'Expected start() to return an auth URL')
       assert.ok(authUrl.startsWith('https://'), `Expected URL starting with https://, got: ${authUrl}`)
       assert.ok(authUrl.includes('claude.ai/oauth'), `Expected claude.ai OAuth URL, got: ${authUrl}`)
+      assert.ok(authUrl.includes('sessions'), `Expected URL to include sessions scope, got: ${authUrl}`)
     } finally {
       await session.cleanup()
     }

@@ -169,18 +169,18 @@ export async function settingsRoutes(fastify) {
     return { configured: true, type: 'credentials-file', ...summariseClaudeCredentials(raw) }
   })
 
-  // ─── Auth Login Flow (setup-token) ──────────────────────────────────────────
+  // ─── Auth Login Flow (claude auth login) ────────────────────────────────────
 
   fastify.post('/auth/login-start', async (req, reply) => {
     if (loginFlowState) {
       return reply.code(409).send({ error: 'A login flow is already in progress' })
     }
 
-    try {
-      const session = new LoginFlowSession({
-        log: (msg) => fastify.log.info(`[auth-login] ${msg}`),
-      })
+    const session = new LoginFlowSession({
+      log: (msg) => fastify.log.info(`[auth-login] ${msg}`),
+    })
 
+    try {
       const authUrl = await session.start({
         deadlineMs: 60000,
         pollIntervalMs: 2000,
@@ -189,33 +189,35 @@ export async function settingsRoutes(fastify) {
       loginFlowState = session
       return { authUrl }
     } catch (err) {
-      if (session) await session.cleanup()
+      await session.cleanup()
       return reply.code(500).send({ error: err.message })
     }
   })
 
-  fastify.post('/auth/login-code', async (req, reply) => {
+  fastify.get('/auth/login-poll', async (req, reply) => {
     if (!loginFlowState) {
       return reply.code(400).send({ error: 'No login flow in progress' })
     }
 
-    const { code } = req.body
-    if (!code) return reply.code(400).send({ error: 'code required' })
-
     try {
-      const token = await loginFlowState.submitCode(code, { timeoutMs: 30000 })
+      const credentialsJson = await loginFlowState.pollCredentials()
+      if (!credentialsJson) {
+        return { status: 'pending' }
+      }
 
-      // Save token
-      settings.set('claudeOauthToken', token)
-      fastify.log.info(`[auth-login] OAuth token saved (${token.length} chars)`)
+      // Save credentials and clear any legacy OAuth token
+      settings.set('claudeCredentials', credentialsJson)
+      settings.set('claudeOauthToken', '')
+      const summary = summariseClaudeCredentials(credentialsJson)
+      fastify.log.info(`[auth-login] credentials saved (${credentialsJson.length} bytes, subscription: ${summary?.subscriptionType})`)
 
       // Cleanup
       await loginFlowState.cleanup()
       loginFlowState = null
 
-      return { saved: true, tokenPreview: '••••' + token.slice(-4) }
+      return { status: 'complete', credentials: summary }
     } catch (err) {
-      fastify.log.error(`[auth-login] code submission failed: ${err.message}`)
+      fastify.log.error(`[auth-login] poll failed: ${err.message}`)
       await loginFlowState.cleanup()
       loginFlowState = null
       return reply.code(500).send({ error: err.message })

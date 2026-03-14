@@ -1045,17 +1045,44 @@ function getCredentialWarning(status) {
 // ─── Login Flow Modal ─────────────────────────────────────────────────────────
 
 function LoginFlowModal({ onClose, onComplete }) {
-  const [stage, setStage] = useState('idle') // idle | starting | auth-url | submitting-code | complete | error
+  const [stage, setStage] = useState('idle') // idle | starting | auth-url | polling | complete | error
   const [authUrl, setAuthUrl] = useState('')
-  const [code, setCode] = useState('')
   const [error, setError] = useState('')
 
+  const pollRef = useRef(null)
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current)
+      pollRef.current = null
+    }
+  }, [])
+
   const cancel = useCallback(async () => {
+    stopPolling()
     if (stage !== 'idle' && stage !== 'complete' && stage !== 'error') {
       await api.post('/auth/login-cancel', {}).catch(() => {})
     }
     onClose()
-  }, [stage, onClose])
+  }, [stage, onClose, stopPolling])
+
+  const startPolling = useCallback(() => {
+    stopPolling()
+    pollRef.current = setInterval(async () => {
+      try {
+        const result = await api.get('/auth/login-poll')
+        if (result.status === 'complete') {
+          stopPolling()
+          setStage('complete')
+          if (onComplete) onComplete()
+        }
+      } catch {
+        // keep polling
+      }
+    }, 3000)
+  }, [onComplete, stopPolling])
+
+  useEffect(() => () => stopPolling(), [stopPolling])
 
   const startLogin = async () => {
     setStage('starting')
@@ -1075,23 +1102,9 @@ function LoginFlowModal({ onClose, onComplete }) {
     }
   }
 
-  const submitCode = async () => {
-    if (!code.trim()) return
-    setStage('submitting-code')
-    setError('')
-    try {
-      const result = await api.post('/auth/login-code', { code: code.trim() })
-      if (result.error) {
-        setError(result.error)
-        setStage('error')
-        return
-      }
-      setStage('complete')
-      if (onComplete) onComplete()
-    } catch (err) {
-      setError(err.message)
-      setStage('error')
-    }
+  const startWaiting = () => {
+    setStage('polling')
+    startPolling()
   }
 
   return (
@@ -1106,7 +1119,7 @@ function LoginFlowModal({ onClose, onComplete }) {
           {stage === 'idle' && (
             <>
               <p className="text-sm text-zinc-400">
-                This will start a temporary container running <code className="text-zinc-300 bg-zinc-800 px-1 rounded">claude setup-token</code> to generate a long-lived OAuth token.
+                This will start a temporary container running <code className="text-zinc-300 bg-zinc-800 px-1 rounded">claude auth login</code> to authorize with full permissions.
               </p>
               <button onClick={startLogin}
                 className="w-full flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors">
@@ -1124,7 +1137,7 @@ function LoginFlowModal({ onClose, onComplete }) {
 
           {stage === 'auth-url' && (
             <>
-              <p className="text-sm text-zinc-400">1. Open this URL in your browser and sign in:</p>
+              <p className="text-sm text-zinc-400">1. Open this URL in your browser and authorize:</p>
               <div className="bg-zinc-800 rounded-lg p-3 flex items-center gap-2">
                 <a href={authUrl} target="_blank" rel="noopener noreferrer"
                   className="flex-1 text-sm text-violet-400 hover:text-violet-300 break-all font-mono flex items-center gap-1.5">
@@ -1132,37 +1145,26 @@ function LoginFlowModal({ onClose, onComplete }) {
                 </a>
                 <CopyButton text={authUrl} />
               </div>
-              <p className="text-sm text-zinc-400 mt-3">2. After signing in, you'll receive a code. Paste it here:</p>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && submitCode()}
-                  placeholder="Paste code here..."
-                  className="flex-1 bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-violet-500"
-                  autoFocus
-                />
-                <button onClick={submitCode} disabled={!code.trim()}
-                  className="px-4 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors">
-                  Submit
-                </button>
-              </div>
+              <p className="text-sm text-zinc-400 mt-3">2. After authorizing, click below to detect completion:</p>
+              <button onClick={startWaiting}
+                className="w-full flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors">
+                I've Authorized
+              </button>
             </>
           )}
 
-          {stage === 'submitting-code' && (
+          {stage === 'polling' && (
             <div className="flex items-center justify-center gap-2 py-8 text-zinc-400">
               <Loader size={18} className="animate-spin" />
-              <span className="text-sm">Submitting code and retrieving token...</span>
+              <span className="text-sm">Waiting for authorization to complete...</span>
             </div>
           )}
 
           {stage === 'complete' && (
             <div className="text-center py-4 space-y-2">
               <Check size={32} className="text-emerald-400 mx-auto" />
-              <p className="text-sm text-emerald-400 font-medium">OAuth token saved successfully!</p>
-              <p className="text-xs text-zinc-500">New sessions will use this token. Restart running sessions to apply.</p>
+              <p className="text-sm text-emerald-400 font-medium">Credentials saved successfully!</p>
+              <p className="text-xs text-zinc-500">New sessions will use these credentials. Restart running sessions to apply.</p>
               <button onClick={onClose}
                 className="mt-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white text-sm rounded-lg transition-colors">
                 Close
@@ -1174,7 +1176,7 @@ function LoginFlowModal({ onClose, onComplete }) {
             <div className="text-center py-4 space-y-2">
               <AlertCircle size={32} className="text-red-400 mx-auto" />
               <p className="text-sm text-red-400">{error}</p>
-              <button onClick={() => { setStage('idle'); setError(''); setCode('') }}
+              <button onClick={() => { setStage('idle'); setError('') }}
                 className="mt-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm rounded-lg transition-colors">
                 Try Again
               </button>
