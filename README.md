@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="claude-et.jpg" alt="Claude ET" width="600">
+</p>
+
 # Claude Session Manager
 
 Remote Claude Code session manager for Unraid. Spin up isolated coding environments, pause/suspend/resume them at will, and connect via SSH + tmux from anywhere on your Tailscale network.
@@ -31,8 +35,9 @@ Unraid Host
 ### 1. Build the session base image
 
 ```bash
-cd session-image
-docker build -t claude-session:node20 .
+docker build -t claude-et-session-base ./images/base
+# Optional: build the .NET variant
+docker build --build-arg BASE_TAG=claude-et-session-base -t claude-et-session-dotnet ./images/dotnet
 ```
 
 ### 2. Build and start the manager
@@ -94,7 +99,7 @@ Add your own Docker images in Settings → Base Images. The image must include:
 - `tmux`
 - `git`
 
-And use the provided `entrypoint.sh` pattern (or adapt it). The manager injects env vars at container start — see `session-image/entrypoint.sh` for the full contract.
+And use the provided `entrypoint.sh` pattern (or adapt it). The manager injects env vars at container start — see `images/base/entrypoint.sh` for the full contract.
 
 ---
 
@@ -128,9 +133,13 @@ Ready for MCP tool wrapping — each action maps cleanly to a tool.
 
 ```
 claude-session-manager/
-├── session-image/
-│   ├── Dockerfile          # Base container image
-│   └── entrypoint.sh       # Repo setup + tmux + Claude Code launch
+├── images/
+│   ├── base/
+│   │   ├── Dockerfile      # Base image (Ubuntu + SSH + Node 20 + Claude Code)
+│   │   ├── entrypoint.sh   # Repo setup + tmux + Claude Code launch
+│   │   └── ghostty.terminfo
+│   └── dotnet/
+│       └── Dockerfile      # .NET 9 variant (FROM base)
 ├── manager/
 │   ├── Dockerfile          # Manager + UI combined image
 │   ├── package.json
