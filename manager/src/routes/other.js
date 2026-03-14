@@ -187,10 +187,21 @@ export async function settingsRoutes(fastify) {
       let authUrl = null
       const deadline = Date.now() + 60000
       while (Date.now() < deadline) {
-        await new Promise(r => setTimeout(r, 1000))
+        await new Promise(r => setTimeout(r, 2000))
+        // Check container is still running
+        const inspect = await container.inspect()
+        const status = inspect.State.Status
+        fastify.log.info(`[auth-login] container status: ${status}`)
+        if (status === 'exited' || status === 'dead') {
+          fastify.log.error(`[auth-login] container exited prematurely (exit code ${inspect.State.ExitCode})`)
+          break
+        }
         const logBuffer = await container.logs({ stdout: true, stderr: true, tail: 50 })
         const logs = typeof logBuffer === 'string' ? logBuffer : logBuffer.toString('utf8')
-        const match = logs.match(/https:\/\/[^\s]+/)
+        // Strip Docker stream headers (8-byte prefix per frame when Tty is false)
+        const cleanLogs = logs.replace(/[\x00-\x08]/g, '').trim()
+        fastify.log.info(`[auth-login] logs (${logBuffer.length} bytes): ${cleanLogs.substring(0, 500)}`)
+        const match = cleanLogs.match(/https:\/\/[^\s]+/)
         if (match) {
           authUrl = match[0]
           break
@@ -198,7 +209,12 @@ export async function settingsRoutes(fastify) {
       }
 
       if (!authUrl) {
-        // Cleanup on failure to find URL
+        // Grab final logs before cleanup
+        try {
+          const finalLogs = await container.logs({ stdout: true, stderr: true, tail: 100 })
+          const finalStr = (typeof finalLogs === 'string' ? finalLogs : finalLogs.toString('utf8')).replace(/[\x00-\x08]/g, '').trim()
+          fastify.log.error(`[auth-login] TIMEOUT - final logs: ${finalStr.substring(0, 1000)}`)
+        } catch {}
         try { await container.stop({ t: 2 }) } catch {}
         try { await container.remove() } catch {}
         return reply.code(500).send({ error: 'Timed out waiting for auth URL from claude login' })
