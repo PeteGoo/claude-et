@@ -19,6 +19,11 @@ RUN apt-get update && apt-get install -y \
     ncurses-bin \
     && rm -rf /var/lib/apt/lists/*
 
+# Node.js 20
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
 # Claude Code (native install)
 RUN curl -fsSL https://claude.ai/install.sh | bash
 ENV PATH="/root/.local/bin:${PATH}"

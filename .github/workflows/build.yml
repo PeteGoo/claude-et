@@ -47,7 +47,7 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.OWNER }}/claude-et-manager:latest
             ${{ env.REGISTRY }}/${{ env.OWNER }}/claude-et-manager:${{ github.sha }}
 
-  build-session-image:
+  build-session-base:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -66,11 +66,44 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push session image
+      - name: Build and push base session image
         uses: docker/build-push-action@v6
         with:
-          context: ./session-image
+          context: ./images/base
           push: true
           tags: |
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/claude-et-session-base:latest
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/claude-et-session-base:${{ github.sha }}
             ${{ env.REGISTRY }}/${{ env.OWNER }}/claude-et-session:latest
             ${{ env.REGISTRY }}/${{ env.OWNER }}/claude-et-session:${{ github.sha }}
+
+  build-session-dotnet:
+    needs: build-session-base
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set lowercase owner
+        run: echo "OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push dotnet session image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./images/dotnet
+          push: true
+          build-args: |
+            BASE_TAG=${{ github.sha }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/claude-et-session-dotnet:latest
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/claude-et-session-dotnet:${{ github.sha }}

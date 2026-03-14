@@ -38,17 +38,31 @@ db.exec(`
   );
 `)
 
-// ─── Default base image ───────────────────────────────────────────────────────
+// ─── Default base images ──────────────────────────────────────────────────────
 
-const defaultImageExists = db.prepare(
-  `SELECT id FROM base_images WHERE id = 'default-node20'`
-).get()
+const defaultImages = [
+  {
+    id: 'default-node20',
+    alias: 'Node 20 + Claude Code',
+    dockerImage: 'ghcr.io/petegoo/claude-et-session:latest',
+    description: 'Default Node.js 20 environment with Claude Code',
+  },
+  {
+    id: 'default-dotnet',
+    alias: '.NET 9 + Node 20 + Claude Code',
+    dockerImage: 'ghcr.io/petegoo/claude-et-session-dotnet:latest',
+    description: '.NET 9 SDK with Node.js 20 and Claude Code',
+  },
+]
 
-if (!defaultImageExists) {
-  db.prepare(`
-    INSERT INTO base_images (id, alias, docker_image, description)
-    VALUES ('default-node20', 'Node 20 + Claude Code', 'ghcr.io/petegoo/claude-et-session:latest', 'Default Node.js 20 environment with Claude Code')
-  `).run()
+for (const img of defaultImages) {
+  const exists = db.prepare(`SELECT id FROM base_images WHERE id = ?`).get(img.id)
+  if (!exists) {
+    db.prepare(`
+      INSERT INTO base_images (id, alias, docker_image, description)
+      VALUES (@id, @alias, @dockerImage, @description)
+    `).run(img)
+  }
 }
 
 // ─── Sessions ─────────────────────────────────────────────────────────────────
