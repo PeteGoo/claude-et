@@ -189,6 +189,7 @@ export async function settingsRoutes(fastify) {
       loginFlowState = session
       return { authUrl }
     } catch (err) {
+      if (session) await session.cleanup()
       return reply.code(500).send({ error: err.message })
     }
   })
@@ -215,6 +216,8 @@ export async function settingsRoutes(fastify) {
       return { saved: true, tokenPreview: '••••' + token.slice(-4) }
     } catch (err) {
       fastify.log.error(`[auth-login] code submission failed: ${err.message}`)
+      await loginFlowState.cleanup()
+      loginFlowState = null
       return reply.code(500).send({ error: err.message })
     }
   })
