@@ -1031,6 +1031,7 @@ function SessionCard({ session, images, onAction, onConnect, onLogs }) {
 
 function getCredentialWarning(status) {
   if (!status || !status.configured) return null
+  if (status.type === 'oauth-token') return null // long-lived token, no expiry
   if (!status.expiresAt) return null
   const now = Date.now()
   const expiresAt = new Date(status.expiresAt).getTime()
@@ -1044,27 +1045,17 @@ function getCredentialWarning(status) {
 // ─── Login Flow Modal ─────────────────────────────────────────────────────────
 
 function LoginFlowModal({ onClose, onComplete }) {
-  const [stage, setStage] = useState('idle') // idle | starting | auth-url | complete | timeout | error
+  const [stage, setStage] = useState('idle') // idle | starting | auth-url | submitting-code | complete | error
   const [authUrl, setAuthUrl] = useState('')
-  const [containerId, setContainerId] = useState(null)
+  const [code, setCode] = useState('')
   const [error, setError] = useState('')
-  const [sessionsUpdated, setSessionsUpdated] = useState(0)
-  const pollRef = useRef(null)
-
-  const cleanup = useCallback(async () => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current)
-      pollRef.current = null
-    }
-  }, [])
 
   const cancel = useCallback(async () => {
-    cleanup()
-    if (containerId && stage !== 'complete') {
+    if (stage !== 'idle' && stage !== 'complete' && stage !== 'error') {
       await api.post('/auth/login-cancel', {}).catch(() => {})
     }
     onClose()
-  }, [cleanup, containerId, stage, onClose])
+  }, [stage, onClose])
 
   const startLogin = async () => {
     setStage('starting')
@@ -1077,37 +1068,31 @@ function LoginFlowModal({ onClose, onComplete }) {
         return
       }
       setAuthUrl(result.authUrl)
-      setContainerId(result.containerId)
       setStage('auth-url')
-
-      // Start polling for completion
-      pollRef.current = setInterval(async () => {
-        try {
-          const status = await api.get('/auth/login-status')
-          if (status.status === 'complete') {
-            clearInterval(pollRef.current)
-            pollRef.current = null
-            // Save credentials and update sessions
-            const saveResult = await api.post('/auth/login-complete', { credentials: status.credentials })
-            setSessionsUpdated(saveResult.sessionsUpdated || 0)
-            setStage('complete')
-            if (onComplete) onComplete()
-          } else if (status.status === 'timeout') {
-            clearInterval(pollRef.current)
-            pollRef.current = null
-            setStage('timeout')
-          }
-        } catch {}
-      }, 2000)
     } catch (err) {
       setError(err.message)
       setStage('error')
     }
   }
 
-  useEffect(() => {
-    return () => cleanup()
-  }, [cleanup])
+  const submitCode = async () => {
+    if (!code.trim()) return
+    setStage('submitting-code')
+    setError('')
+    try {
+      const result = await api.post('/auth/login-code', { code: code.trim() })
+      if (result.error) {
+        setError(result.error)
+        setStage('error')
+        return
+      }
+      setStage('complete')
+      if (onComplete) onComplete()
+    } catch (err) {
+      setError(err.message)
+      setStage('error')
+    }
+  }
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -1121,7 +1106,7 @@ function LoginFlowModal({ onClose, onComplete }) {
           {stage === 'idle' && (
             <>
               <p className="text-sm text-zinc-400">
-                This will start a temporary container running <code className="text-zinc-300 bg-zinc-800 px-1 rounded">claude login</code> to generate fresh credentials.
+                This will start a temporary container running <code className="text-zinc-300 bg-zinc-800 px-1 rounded">claude setup-token</code> to generate a long-lived OAuth token.
               </p>
               <button onClick={startLogin}
                 className="w-full flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors">
@@ -1139,7 +1124,7 @@ function LoginFlowModal({ onClose, onComplete }) {
 
           {stage === 'auth-url' && (
             <>
-              <p className="text-sm text-zinc-400">Open this URL in your browser and complete the login:</p>
+              <p className="text-sm text-zinc-400">1. Open this URL in your browser and sign in:</p>
               <div className="bg-zinc-800 rounded-lg p-3 flex items-center gap-2">
                 <a href={authUrl} target="_blank" rel="noopener noreferrer"
                   className="flex-1 text-sm text-violet-400 hover:text-violet-300 break-all font-mono flex items-center gap-1.5">
@@ -1147,32 +1132,40 @@ function LoginFlowModal({ onClose, onComplete }) {
                 </a>
                 <CopyButton text={authUrl} />
               </div>
-              <div className="flex items-center gap-2 text-zinc-500 text-xs">
-                <Loader size={12} className="animate-spin" />
-                Waiting for login to complete (5 min timeout)...
+              <p className="text-sm text-zinc-400 mt-3">2. After signing in, you'll receive a code. Paste it here:</p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && submitCode()}
+                  placeholder="Paste code here..."
+                  className="flex-1 bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-violet-500"
+                  autoFocus
+                />
+                <button onClick={submitCode} disabled={!code.trim()}
+                  className="px-4 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors">
+                  Submit
+                </button>
               </div>
             </>
+          )}
+
+          {stage === 'submitting-code' && (
+            <div className="flex items-center justify-center gap-2 py-8 text-zinc-400">
+              <Loader size={18} className="animate-spin" />
+              <span className="text-sm">Submitting code and retrieving token...</span>
+            </div>
           )}
 
           {stage === 'complete' && (
             <div className="text-center py-4 space-y-2">
               <Check size={32} className="text-emerald-400 mx-auto" />
-              <p className="text-sm text-emerald-400 font-medium">Credentials renewed successfully!</p>
-              <p className="text-xs text-zinc-500">{sessionsUpdated} running session{sessionsUpdated === 1 ? '' : 's'} updated.</p>
+              <p className="text-sm text-emerald-400 font-medium">OAuth token saved successfully!</p>
+              <p className="text-xs text-zinc-500">New sessions will use this token. Restart running sessions to apply.</p>
               <button onClick={onClose}
                 className="mt-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white text-sm rounded-lg transition-colors">
                 Close
-              </button>
-            </div>
-          )}
-
-          {stage === 'timeout' && (
-            <div className="text-center py-4 space-y-2">
-              <AlertCircle size={32} className="text-amber-400 mx-auto" />
-              <p className="text-sm text-amber-400">Login timed out after 5 minutes.</p>
-              <button onClick={() => { setStage('idle'); setError('') }}
-                className="mt-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm rounded-lg transition-colors">
-                Try Again
               </button>
             </div>
           )}
@@ -1181,7 +1174,7 @@ function LoginFlowModal({ onClose, onComplete }) {
             <div className="text-center py-4 space-y-2">
               <AlertCircle size={32} className="text-red-400 mx-auto" />
               <p className="text-sm text-red-400">{error}</p>
-              <button onClick={() => { setStage('idle'); setError('') }}
+              <button onClick={() => { setStage('idle'); setError(''); setCode('') }}
                 className="mt-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm rounded-lg transition-colors">
                 Try Again
               </button>

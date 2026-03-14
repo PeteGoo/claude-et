@@ -44,9 +44,12 @@ export async function startContainer(session, baseImage, options = {}) {
 
   const pushToGitHub = session.repos.some(r => r.type === 'new' && r.pushToGitHub)
 
-  // Write Claude credentials file if configured
+  // Write Claude credentials file if configured (legacy) or use OAuth token
   const binds = [`${reposDir}:/repos`]
-  if (config.claudeCredentials) {
+  const claudeOauthToken = config.claudeOauthToken || ''
+  if (claudeOauthToken) {
+    console.log(`[docker] Using CLAUDE_CODE_OAUTH_TOKEN env var (${claudeOauthToken.length} chars)`)
+  } else if (config.claudeCredentials) {
     const claudeDir = join(sessionDir, '.claude')
     mkdirSync(claudeDir, { recursive: true })
     const credsPath = join(claudeDir, '.credentials.json')
@@ -73,6 +76,7 @@ export async function startContainer(session, baseImage, options = {}) {
       `SESSION_NAME=${session.name || ''}`,
       `PERMISSION_MODE=${options.permissionMode || ''}`,
       `SPAWN_MODE=${options.spawnMode || ''}`,
+      ...(claudeOauthToken ? [`CLAUDE_CODE_OAUTH_TOKEN=${claudeOauthToken}`] : []),
     ],
     HostConfig: {
       PortBindings: {

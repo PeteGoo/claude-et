@@ -188,6 +188,7 @@ const DEFAULTS = {
   gitName: 'Claude Session',
   sshPublicKey: '',
   claudeCredentials: '',
+  claudeOauthToken: '',
 }
 
 export const settings = {
