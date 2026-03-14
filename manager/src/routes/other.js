@@ -168,16 +168,11 @@ export async function settingsRoutes(fastify) {
       return reply.code(409).send({ error: 'A login flow is already in progress' })
     }
 
-    const images = baseImages.getAll()
-    if (!images.length) {
-      return reply.code(400).send({ error: 'No base images configured. Add one in Settings → Base Images first.' })
-    }
-
-    const baseImage = images[0]
+    const LOGIN_IMAGE = 'ghcr.io/petegoo/claude-et-session-base:latest'
 
     try {
       const container = await docker.createContainer({
-        Image: baseImage.dockerImage,
+        Image: LOGIN_IMAGE,
         Cmd: ['bash', '-c', 'claude login 2>&1 && tail -f /dev/null'],
         Tty: true,
         HostConfig: {
