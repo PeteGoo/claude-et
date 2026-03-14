@@ -1,7 +1,12 @@
 import { nanoid } from 'nanoid'
+import Docker from 'dockerode'
 import { baseImages, settings } from '../services/db.js'
-import { listAvailableImages } from '../services/docker.js'
+import { listAvailableImages, execInContainer, updateAllSessionCredentials } from '../services/docker.js'
 import { listRepos, createRepo, validateToken } from '../services/github.js'
+
+const docker = new Docker({ socketPath: '/var/run/docker.sock' })
+
+let loginFlowState = null
 
 // ─── Base Images ──────────────────────────────────────────────────────────────
 
@@ -147,6 +152,139 @@ export async function settingsRoutes(fastify) {
   fastify.delete('/settings/claude-credentials', async (req, reply) => {
     settings.set('claudeCredentials', '')
     return { deleted: true }
+  })
+
+  // Lightweight credential status for polling
+  fastify.get('/credentials-status', async () => {
+    const raw = settings.get('claudeCredentials')
+    if (!raw) return { configured: false }
+    return { configured: true, ...summariseClaudeCredentials(raw) }
+  })
+
+  // ─── Auth Login Flow ─────────────────────────────────────────────────────────
+
+  fastify.post('/auth/login-start', async (req, reply) => {
+    if (loginFlowState) {
+      return reply.code(409).send({ error: 'A login flow is already in progress' })
+    }
+
+    const images = baseImages.getAll()
+    if (!images.length) {
+      return reply.code(400).send({ error: 'No base images configured. Add one in Settings → Base Images first.' })
+    }
+
+    const baseImage = images[0]
+
+    try {
+      const container = await docker.createContainer({
+        Image: baseImage.dockerImage,
+        Cmd: ['bash', '-c', 'claude login 2>&1 && tail -f /dev/null'],
+        Tty: true,
+        HostConfig: {
+          RestartPolicy: { Name: 'no' },
+        },
+      })
+
+      await container.start()
+      const containerId = container.id
+
+      // Poll logs for auth URL (up to 15 seconds)
+      let authUrl = null
+      const deadline = Date.now() + 15000
+      while (Date.now() < deadline) {
+        await new Promise(r => setTimeout(r, 1000))
+        const logBuffer = await container.logs({ stdout: true, stderr: true, tail: 50 })
+        const logs = typeof logBuffer === 'string' ? logBuffer : logBuffer.toString('utf8')
+        const match = logs.match(/https:\/\/[^\s]+/)
+        if (match) {
+          authUrl = match[0]
+          break
+        }
+      }
+
+      if (!authUrl) {
+        // Cleanup on failure to find URL
+        try { await container.stop({ t: 2 }) } catch {}
+        try { await container.remove() } catch {}
+        return reply.code(500).send({ error: 'Timed out waiting for auth URL from claude login' })
+      }
+
+      loginFlowState = { containerId, startedAt: Date.now() }
+      return { containerId, authUrl }
+    } catch (err) {
+      return reply.code(500).send({ error: err.message })
+    }
+  })
+
+  fastify.get('/auth/login-status', async (req, reply) => {
+    if (!loginFlowState) {
+      return reply.code(400).send({ error: 'No login flow in progress' })
+    }
+
+    const { containerId, startedAt } = loginFlowState
+
+    // Timeout after 5 minutes
+    if (Date.now() - startedAt > 5 * 60 * 1000) {
+      try {
+        const container = docker.getContainer(containerId)
+        await container.stop({ t: 2 })
+        await container.remove()
+      } catch {}
+      loginFlowState = null
+      return { status: 'timeout' }
+    }
+
+    try {
+      const output = await execInContainer(containerId, ['cat', '/root/.claude/.credentials.json'])
+      // Strip docker stream header bytes - look for first { character
+      const jsonStart = output.indexOf('{')
+      if (jsonStart === -1) {
+        return { status: 'waiting' }
+      }
+      const jsonStr = output.slice(jsonStart)
+      const parsed = JSON.parse(jsonStr)
+      if (parsed.claudeAiOauth?.accessToken) {
+        return { status: 'complete', credentials: jsonStr }
+      }
+      return { status: 'waiting' }
+    } catch {
+      return { status: 'waiting' }
+    }
+  })
+
+  fastify.post('/auth/login-complete', async (req, reply) => {
+    const { credentials } = req.body
+    if (!credentials) return reply.code(400).send({ error: 'credentials required' })
+
+    // Save to DB
+    settings.set('claudeCredentials', credentials)
+
+    // Update all running sessions
+    const updated = updateAllSessionCredentials(credentials)
+
+    // Cleanup temp container
+    if (loginFlowState) {
+      try {
+        const container = docker.getContainer(loginFlowState.containerId)
+        await container.stop({ t: 2 })
+        await container.remove()
+      } catch {}
+      loginFlowState = null
+    }
+
+    return { saved: true, sessionsUpdated: updated, ...summariseClaudeCredentials(credentials) }
+  })
+
+  fastify.post('/auth/login-cancel', async (req, reply) => {
+    if (!loginFlowState) return { cancelled: false }
+
+    try {
+      const container = docker.getContainer(loginFlowState.containerId)
+      await container.stop({ t: 2 })
+      await container.remove()
+    } catch {}
+    loginFlowState = null
+    return { cancelled: true }
   })
 }
 

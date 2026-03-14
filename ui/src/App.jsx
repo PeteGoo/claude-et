@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Terminal, Play, Pause, Square, Trash2, Plus, Settings,
   RefreshCw, Copy, Check, Github, Server, ChevronRight,
-  ChevronLeft, X, AlertCircle, Loader, HardDrive, Key,
-  Search, ScrollText, ArrowDown
+  ChevronLeft, X, AlertCircle, AlertTriangle, Loader, HardDrive, Key,
+  Search, ScrollText, ArrowDown, ExternalLink
 } from 'lucide-react'
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
@@ -509,7 +509,7 @@ function NewSessionWizard({ images, onClose, onCreated }) {
 
 // ─── Settings Panel ───────────────────────────────────────────────────────────
 
-function SettingsPanel({ onClose }) {
+function SettingsPanel({ onClose, onOpenLoginFlow }) {
   const [config, setConfig] = useState(null)
   const [saving, setSaving] = useState(false)
   const [tokenInput, setTokenInput] = useState('')
@@ -705,10 +705,16 @@ function SettingsPanel({ onClose }) {
                         </>
                       )}
                     </div>
-                    <button onClick={clearClaudeCreds}
-                      className="text-xs text-red-400 hover:text-red-300 transition-colors">
-                      Remove credentials
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button onClick={onOpenLoginFlow}
+                        className="text-xs text-violet-400 hover:text-violet-300 transition-colors">
+                        Renew via login
+                      </button>
+                      <button onClick={clearClaudeCreds}
+                        className="text-xs text-red-400 hover:text-red-300 transition-colors">
+                        Remove credentials
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div>
@@ -1021,6 +1027,172 @@ function SessionCard({ session, images, onAction, onConnect, onLogs }) {
   )
 }
 
+// ─── Credential Warning Helper ────────────────────────────────────────────────
+
+function getCredentialWarning(status) {
+  if (!status || !status.configured) return null
+  if (!status.expiresAt) return null
+  const now = Date.now()
+  const expiresAt = new Date(status.expiresAt).getTime()
+  const hoursRemaining = (expiresAt - now) / (1000 * 60 * 60)
+  if (hoursRemaining <= 0) return { level: 'expired', message: 'Claude credentials have expired. Sessions may fail to authenticate.' }
+  if (hoursRemaining <= 24) return { level: 'critical', message: `Claude credentials expire in ${Math.ceil(hoursRemaining)} hour${Math.ceil(hoursRemaining) === 1 ? '' : 's'}.` }
+  if (hoursRemaining <= 72) return { level: 'warning', message: `Claude credentials expire in ${Math.ceil(hoursRemaining)} hours.` }
+  return null
+}
+
+// ─── Login Flow Modal ─────────────────────────────────────────────────────────
+
+function LoginFlowModal({ onClose, onComplete }) {
+  const [stage, setStage] = useState('idle') // idle | starting | auth-url | complete | timeout | error
+  const [authUrl, setAuthUrl] = useState('')
+  const [containerId, setContainerId] = useState(null)
+  const [error, setError] = useState('')
+  const [sessionsUpdated, setSessionsUpdated] = useState(0)
+  const pollRef = useRef(null)
+
+  const cleanup = useCallback(async () => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current)
+      pollRef.current = null
+    }
+  }, [])
+
+  const cancel = useCallback(async () => {
+    cleanup()
+    if (containerId && stage !== 'complete') {
+      await api.post('/auth/login-cancel', {}).catch(() => {})
+    }
+    onClose()
+  }, [cleanup, containerId, stage, onClose])
+
+  const startLogin = async () => {
+    setStage('starting')
+    setError('')
+    try {
+      const result = await api.post('/auth/login-start', {})
+      if (result.error) {
+        setError(result.error)
+        setStage('error')
+        return
+      }
+      setAuthUrl(result.authUrl)
+      setContainerId(result.containerId)
+      setStage('auth-url')
+
+      // Start polling for completion
+      pollRef.current = setInterval(async () => {
+        try {
+          const status = await api.get('/auth/login-status')
+          if (status.status === 'complete') {
+            clearInterval(pollRef.current)
+            pollRef.current = null
+            // Save credentials and update sessions
+            const saveResult = await api.post('/auth/login-complete', { credentials: status.credentials })
+            setSessionsUpdated(saveResult.sessionsUpdated || 0)
+            setStage('complete')
+            if (onComplete) onComplete()
+          } else if (status.status === 'timeout') {
+            clearInterval(pollRef.current)
+            pollRef.current = null
+            setStage('timeout')
+          }
+        } catch {}
+      }, 2000)
+    } catch (err) {
+      setError(err.message)
+      setStage('error')
+    }
+  }
+
+  useEffect(() => {
+    return () => cleanup()
+  }, [cleanup])
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-zinc-900 border border-zinc-700 rounded-xl w-full max-w-lg">
+        <div className="flex items-center justify-between p-4 border-b border-zinc-700">
+          <h2 className="font-semibold text-white flex items-center gap-2"><Key size={16} /> Renew Claude Auth</h2>
+          <button onClick={cancel} className="text-zinc-400 hover:text-white"><X size={18} /></button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          {stage === 'idle' && (
+            <>
+              <p className="text-sm text-zinc-400">
+                This will start a temporary container running <code className="text-zinc-300 bg-zinc-800 px-1 rounded">claude login</code> to generate fresh credentials.
+              </p>
+              <button onClick={startLogin}
+                className="w-full flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors">
+                Start Login
+              </button>
+            </>
+          )}
+
+          {stage === 'starting' && (
+            <div className="flex items-center justify-center gap-2 py-8 text-zinc-400">
+              <Loader size={18} className="animate-spin" />
+              <span className="text-sm">Starting temporary container...</span>
+            </div>
+          )}
+
+          {stage === 'auth-url' && (
+            <>
+              <p className="text-sm text-zinc-400">Open this URL in your browser and complete the login:</p>
+              <div className="bg-zinc-800 rounded-lg p-3 flex items-center gap-2">
+                <a href={authUrl} target="_blank" rel="noopener noreferrer"
+                  className="flex-1 text-sm text-violet-400 hover:text-violet-300 break-all font-mono flex items-center gap-1.5">
+                  <ExternalLink size={13} className="shrink-0" /> {authUrl}
+                </a>
+                <CopyButton text={authUrl} />
+              </div>
+              <div className="flex items-center gap-2 text-zinc-500 text-xs">
+                <Loader size={12} className="animate-spin" />
+                Waiting for login to complete (5 min timeout)...
+              </div>
+            </>
+          )}
+
+          {stage === 'complete' && (
+            <div className="text-center py-4 space-y-2">
+              <Check size={32} className="text-emerald-400 mx-auto" />
+              <p className="text-sm text-emerald-400 font-medium">Credentials renewed successfully!</p>
+              <p className="text-xs text-zinc-500">{sessionsUpdated} running session{sessionsUpdated === 1 ? '' : 's'} updated.</p>
+              <button onClick={onClose}
+                className="mt-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white text-sm rounded-lg transition-colors">
+                Close
+              </button>
+            </div>
+          )}
+
+          {stage === 'timeout' && (
+            <div className="text-center py-4 space-y-2">
+              <AlertCircle size={32} className="text-amber-400 mx-auto" />
+              <p className="text-sm text-amber-400">Login timed out after 5 minutes.</p>
+              <button onClick={() => { setStage('idle'); setError('') }}
+                className="mt-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm rounded-lg transition-colors">
+                Try Again
+              </button>
+            </div>
+          )}
+
+          {stage === 'error' && (
+            <div className="text-center py-4 space-y-2">
+              <AlertCircle size={32} className="text-red-400 mx-auto" />
+              <p className="text-sm text-red-400">{error}</p>
+              <button onClick={() => { setStage('idle'); setError('') }}
+                className="mt-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm rounded-lg transition-colors">
+                Try Again
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main App ─────────────────────────────────────────────────────────────────
 
 export default function App() {
@@ -1031,11 +1203,14 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false)
   const [sshSession, setSshSession] = useState(null)
   const [logsSession, setLogsSession] = useState(null)
+  const [credentialStatus, setCredentialStatus] = useState(null)
+  const [showLoginFlow, setShowLoginFlow] = useState(false)
 
   const refresh = useCallback(async () => {
-    const [s, i] = await Promise.all([api.get('/sessions'), api.get('/images')])
+    const [s, i, cs] = await Promise.all([api.get('/sessions'), api.get('/images'), api.get('/credentials-status')])
     setSessions(Array.isArray(s) ? s : [])
     setImages(Array.isArray(i) ? i : [])
+    setCredentialStatus(cs)
     setLoading(false)
   }, [])
 
@@ -1073,6 +1248,29 @@ export default function App() {
           </button>
         </div>
       </header>
+
+      {/* Credential Warning Banner */}
+      {(() => {
+        const warning = getCredentialWarning(credentialStatus)
+        if (!warning) return null
+        const styles = {
+          expired: 'bg-red-500/10 border-red-500/30 text-red-400',
+          critical: 'bg-amber-500/10 border-amber-500/30 text-amber-400',
+          warning: 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400',
+        }
+        return (
+          <div className={`border-b px-6 py-3 flex items-center justify-between ${styles[warning.level]}`}>
+            <div className="flex items-center gap-2 text-sm">
+              <AlertTriangle size={16} />
+              <span>{warning.message}</span>
+            </div>
+            <button onClick={() => setShowLoginFlow(true)}
+              className="text-xs font-medium px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition-colors">
+              Renew Auth
+            </button>
+          </div>
+        )
+      })()}
 
       {/* Main */}
       <main className="max-w-4xl mx-auto px-6 py-8 space-y-6">
@@ -1133,9 +1331,10 @@ export default function App() {
           onCreated={(s) => setSessions(prev => [s, ...prev])}
         />
       )}
-      {showSettings && <SettingsPanel onClose={() => { setShowSettings(false); refresh() }} />}
+      {showSettings && <SettingsPanel onClose={() => { setShowSettings(false); refresh() }} onOpenLoginFlow={() => { setShowSettings(false); setShowLoginFlow(true) }} />}
       {sshSession && <SSHModal session={sshSession} onClose={() => setSshSession(null)} />}
       {logsSession && <LogsModal session={logsSession} onClose={() => setLogsSession(null)} />}
+      {showLoginFlow && <LoginFlowModal onClose={() => { setShowLoginFlow(false); refresh() }} onComplete={refresh} />}
     </div>
   )
 }

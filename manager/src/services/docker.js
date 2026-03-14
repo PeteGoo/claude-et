@@ -1,6 +1,6 @@
 import Docker from 'dockerode'
 import { sessions, settings } from './db.js'
-import { mkdirSync, writeFileSync } from 'fs'
+import { mkdirSync, writeFileSync, existsSync } from 'fs'
 import { join } from 'path'
 
 const docker = new Docker({ socketPath: '/var/run/docker.sock' })
@@ -138,6 +138,41 @@ export async function getContainerLogs(containerId, tail = 200) {
 export async function listAvailableImages() {
   const images = await docker.listImages()
   return images.flatMap(img => img.RepoTags || []).filter(t => t !== '<none>:<none>')
+}
+
+// ─── Exec in container ───────────────────────────────────────────────────────
+
+export async function execInContainer(containerId, cmd) {
+  const container = docker.getContainer(containerId)
+  const exec = await container.exec({ Cmd: cmd, AttachStdout: true, AttachStderr: true })
+  const stream = await exec.start()
+  return new Promise((resolve, reject) => {
+    const chunks = []
+    stream.on('data', chunk => chunks.push(chunk))
+    stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+    stream.on('error', reject)
+  })
+}
+
+// ─── Update credentials in running sessions ─────────────────────────────────
+
+export function updateAllSessionCredentials(credentialsJson) {
+  const config = settings.getAll()
+  const sessionsPath = config.sessionsPath || '/mnt/user/claude-sessions'
+  const allSessions = sessions.getAll()
+  let updated = 0
+
+  for (const session of allSessions) {
+    const credsPath = join(sessionsPath, session.id, '.claude', '.credentials.json')
+    if (existsSync(credsPath)) {
+      writeFileSync(credsPath, credentialsJson, { mode: 0o600 })
+      updated++
+      console.log(`[credentials] Updated ${credsPath}`)
+    }
+  }
+
+  console.log(`[credentials] Updated ${updated}/${allSessions.length} session credential files`)
+  return updated
 }
 
 // ─── Status sync ──────────────────────────────────────────────────────────────
