@@ -183,9 +183,9 @@ export async function settingsRoutes(fastify) {
       await container.start()
       const containerId = container.id
 
-      // Poll logs for auth URL (up to 15 seconds)
+      // Poll logs for auth URL (up to 60 seconds)
       let authUrl = null
-      const deadline = Date.now() + 15000
+      const deadline = Date.now() + 60000
       while (Date.now() < deadline) {
         await new Promise(r => setTimeout(r, 1000))
         const logBuffer = await container.logs({ stdout: true, stderr: true, tail: 50 })
