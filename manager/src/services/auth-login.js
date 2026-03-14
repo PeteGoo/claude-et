@@ -71,7 +71,7 @@ export class LoginFlowSession {
         throw new Error(`Container exited prematurely (exit code ${inspect.State.ExitCode})`)
       }
 
-      const cleanOutput = this.output.replace(/[\x00-\x08]/g, '').trim()
+      const cleanOutput = this.output.replace(/\x1b\[[^a-zA-Z]*[a-zA-Z]/g, '').replace(/[\x00-\x08]/g, '').trim()
       const match = cleanOutput.match(URL_REGEX)
       if (match) {
         this.authUrl = match[0]
@@ -105,7 +105,7 @@ export class LoginFlowSession {
     while (Date.now() < deadline) {
       await new Promise(r => setTimeout(r, 500))
 
-      const newOutput = this.output.slice(outputLenBefore)
+      const newOutput = this.output.slice(outputLenBefore).replace(/\x1b\[[^a-zA-Z]*[a-zA-Z]/g, '').replace(/[\x00-\x08]/g, '')
       const tokenMatch = newOutput.match(TOKEN_REGEX)
       if (tokenMatch) {
         this.log('OAuth token extracted')
