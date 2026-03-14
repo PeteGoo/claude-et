@@ -173,7 +173,8 @@ export async function settingsRoutes(fastify) {
     try {
       const container = await docker.createContainer({
         Image: LOGIN_IMAGE,
-        Cmd: ['bash', '-c', 'claude login 2>&1 && tail -f /dev/null'],
+        Entrypoint: ['bash', '-c'],
+        Cmd: ['claude login 2>&1 && tail -f /dev/null'],
         Tty: true,
         HostConfig: {
           RestartPolicy: { Name: 'no' },
