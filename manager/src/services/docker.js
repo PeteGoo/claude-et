@@ -72,6 +72,7 @@ export async function startContainer(session, baseImage, options = {}) {
       `TMUX_SESSION=claude-main`,
       `SESSION_NAME=${session.name || ''}`,
       `PERMISSION_MODE=${options.permissionMode || ''}`,
+      `SPAWN_MODE=${options.spawnMode || ''}`,
     ],
     HostConfig: {
       PortBindings: {

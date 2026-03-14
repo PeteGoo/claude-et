@@ -130,6 +130,7 @@ function NewSessionWizard({ images, onClose, onCreated }) {
   const [sessionName, setSessionName] = useState('')
   const [selectedImage, setSelectedImage] = useState(images[0]?.id || '')
   const [permissionMode, setPermissionMode] = useState('')
+  const [spawnMode, setSpawnMode] = useState('same-dir')
   const [repoMode, setRepoMode] = useState('existing') // 'existing' | 'new'
   const [selectedRepos, setSelectedRepos] = useState([])
   const [newRepoName, setNewRepoName] = useState('')
@@ -219,6 +220,7 @@ function NewSessionWizard({ images, onClose, onCreated }) {
         baseImageId: selectedImage,
         repos: pendingRepos,
         permissionMode: permissionMode || undefined,
+        spawnMode: spawnMode || undefined,
       })
       if (session.error) throw new Error(session.error)
       onCreated(session)
@@ -423,6 +425,10 @@ function NewSessionWizard({ images, onClose, onCreated }) {
                     <span className="text-white">{permissionMode}</span>
                   </div>
                 )}
+                <div className="flex justify-between text-zinc-400">
+                  <span>Spawn mode</span>
+                  <span className="text-white">{spawnMode}</span>
+                </div>
                 <div className="border-t border-zinc-700 pt-3">
                   <p className="text-zinc-400 mb-2">Repos</p>
                   {pendingRepos.map((r, i) => (
@@ -450,6 +456,19 @@ function NewSessionWizard({ images, onClose, onCreated }) {
                   <option value="acceptEdits">Accept edits — auto-approve file changes</option>
                   <option value="dontAsk">Don't ask — auto-approve all tools</option>
                   <option value="bypassPermissions">Bypass permissions — skip all checks</option>
+                </select>
+              </div>
+
+              {/* Spawn mode */}
+              <div>
+                <label className="text-xs text-zinc-500 uppercase tracking-wide block mb-2">Spawn mode</label>
+                <select
+                  value={spawnMode}
+                  onChange={e => setSpawnMode(e.target.value)}
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-violet-500"
+                >
+                  <option value="same-dir">Same dir — sessions share the current directory</option>
+                  <option value="worktree">Worktree — each session gets an isolated git worktree</option>
                 </select>
               </div>
 

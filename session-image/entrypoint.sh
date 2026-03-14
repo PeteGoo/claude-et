@@ -128,6 +128,9 @@ fi
 if [ -n "$PERMISSION_MODE" ]; then
     CLAUDE_CMD="$CLAUDE_CMD --permission-mode $PERMISSION_MODE"
 fi
+# Default to same-dir spawn mode if not explicitly set
+SPAWN_MODE="${SPAWN_MODE:-same-dir}"
+CLAUDE_CMD="$CLAUDE_CMD --spawn=$SPAWN_MODE"
 
 tmux new-session -d -s "$TMUX_NAME" -c "$WORK_DIR"
 
