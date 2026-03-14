@@ -2,9 +2,9 @@
   <img src="claude-et.jpg" alt="Claude ET" width="600">
 </p>
 
-# Claude Session Manager
+# Claude E.T.
 
-Remote Claude Code session manager for Unraid. Spin up isolated coding environments, pause/suspend/resume them at will, and connect via SSH + tmux from anywhere on your Tailscale network.
+*Let Claude phone home.* Remote Claude Code session manager for Unraid. Spin up isolated coding environments, pause/suspend/resume them at will, and connect via SSH + tmux from anywhere on your Tailscale network.
 
 ## Architecture
 
