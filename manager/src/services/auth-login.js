@@ -11,8 +11,9 @@ const TOKEN_REGEX = /sk-ant-oat01-[A-Za-z0-9_-]+/
  * and code submission.
  */
 export class LoginFlowSession {
-  constructor({ log } = {}) {
+  constructor({ log, image } = {}) {
     this.log = log || (() => {})
+    this.image = image || LOGIN_IMAGE
     this.container = null
     this.stream = null
     this.output = ''
@@ -31,7 +32,7 @@ export class LoginFlowSession {
    */
   async start({ deadlineMs = 60000, pollIntervalMs = 2000 } = {}) {
     this.container = await docker.createContainer({
-      Image: LOGIN_IMAGE,
+      Image: this.image,
       Entrypoint: ['bash', '-c'],
       Cmd: [
         'mkdir -p /root/.claude && echo \'{"hasCompletedOnboarding":true}\' > /root/.claude/settings.json && claude setup-token 2>&1; sleep 30',

@@ -2,10 +2,13 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { LoginFlowSession } from './auth-login.js'
 
+const TEST_IMAGE = process.env.TEST_IMAGE || 'claude-et-session-base:test'
+
 describe('LoginFlowSession integration', () => {
   it('extracts auth URL from real claude setup-token output', async () => {
     const session = new LoginFlowSession({
       log: (msg) => console.log(`[integration-test] ${msg}`),
+      image: TEST_IMAGE,
     })
 
     try {
