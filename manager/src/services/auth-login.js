@@ -79,19 +79,23 @@ export class LoginFlowSession {
 
       const cleanOutput = this.output.replace(/\x1b\[[^a-zA-Z]*[a-zA-Z]/g, '').replace(/[\x00-\x08]/g, '').trim()
 
-      // Log new output and send Enter to navigate past onboarding screens
+      // Log new output
       if (cleanOutput.length > lastOutputLen) {
         this.log(`exec output (${cleanOutput.length} chars): ${cleanOutput.slice(-300)}`)
         lastOutputLen = cleanOutput.length
       }
 
-      // Keep pressing Enter to navigate through onboarding until we see the URL
-      if (!cleanOutput.match(URL_REGEX) && this.execStream.writable) {
+      // Collapse whitespace so TTY line-wrapped URLs are reassembled
+      const collapsed = cleanOutput.replace(/\s+/g, '')
+      const hasPartialUrl = collapsed.includes('claude.ai/oauth')
+
+      // Only send Enter if we haven't seen a URL fragment yet
+      if (!hasPartialUrl && this.execStream.writable) {
         this.log('no URL yet, sending Enter to advance onboarding')
         this.execStream.write('\r')
       }
 
-      const match = cleanOutput.match(URL_REGEX)
+      const match = collapsed.match(URL_REGEX)
       if (match) {
         this.authUrl = match[0]
         this.log(`auth URL found`)
