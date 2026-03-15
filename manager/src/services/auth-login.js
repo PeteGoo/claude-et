@@ -11,9 +11,10 @@ const URL_REGEX = /https:\/\/[^\s]+/
  * for authorization completion — no code paste required.
  */
 export class LoginFlowSession {
-  constructor({ log, image } = {}) {
+  constructor({ log, image, cmd } = {}) {
     this.log = log || (() => {})
     this.image = image || LOGIN_IMAGE
+    this.cmd = cmd || ['claude']
     this.container = null
     this.execStream = null
     this.output = ''
@@ -50,7 +51,7 @@ export class LoginFlowSession {
     // Unlike `claude auth login` (which does server-side polling),
     // the interactive `claude` command accepts a code paste via stdin.
     const exec = await this.container.exec({
-      Cmd: ['claude'],
+      Cmd: this.cmd,
       AttachStdin: true,
       AttachStdout: true,
       AttachStderr: true,

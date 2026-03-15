@@ -9,6 +9,7 @@ describe('LoginFlowSession integration', () => {
     const session = new LoginFlowSession({
       log: (msg) => console.log(`[integration-test] ${msg}`),
       image: TEST_IMAGE,
+      cmd: ['claude', 'auth', 'login'],
     })
 
     try {
