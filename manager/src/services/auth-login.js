@@ -46,9 +46,11 @@ export class LoginFlowSession {
     this.startedAt = Date.now()
     this.log(`container started: ${this.container.id}`)
 
-    // Exec claude auth login with a proper TTY
+    // Exec claude (interactive) — with onboarding done it goes straight to auth
+    // Unlike `claude auth login` (which does server-side polling),
+    // the interactive `claude` command accepts a code paste via stdin.
     const exec = await this.container.exec({
-      Cmd: ['claude', 'auth', 'login'],
+      Cmd: ['claude'],
       AttachStdin: true,
       AttachStdout: true,
       AttachStderr: true,
