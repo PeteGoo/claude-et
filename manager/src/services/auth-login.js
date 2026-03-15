@@ -91,8 +91,10 @@ export class LoginFlowSession {
    */
   submitCode(code) {
     if (!this.execStream) throw new Error('No exec stream available')
-    this.execStream.write(code + '\n')
-    this.log('code submitted to exec stream')
+    this.log(`submitting code (${code.length} chars), stream writable: ${this.execStream.writable}`)
+    this.log(`output so far: ${this.output.slice(-200)}`)
+    this.execStream.write(code + '\r')
+    this.log('code written to exec stream')
   }
 
   /**
@@ -102,6 +104,7 @@ export class LoginFlowSession {
    */
   async pollCredentials() {
     if (!this.container) return null
+    this.log(`polling credentials, output tail: ${this.output.slice(-300)}`)
 
     try {
       const exec = await this.container.exec({
