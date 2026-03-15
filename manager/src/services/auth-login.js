@@ -79,19 +79,16 @@ export class LoginFlowSession {
 
       const cleanOutput = this.output.replace(/\x1b\[[^a-zA-Z]*[a-zA-Z]/g, '').replace(/[\x00-\x08]/g, '').trim()
 
-      // Auto-navigate onboarding prompts by pressing Enter to accept defaults
+      // Log new output and send Enter to navigate past onboarding screens
       if (cleanOutput.length > lastOutputLen) {
         this.log(`exec output (${cleanOutput.length} chars): ${cleanOutput.slice(-300)}`)
         lastOutputLen = cleanOutput.length
+      }
 
-        // Detect interactive prompts and press Enter to accept default selection
-        if (cleanOutput.includes('Dark mode') && cleanOutput.includes('Light mode')) {
-          this.log('detected theme prompt, sending Enter')
-          this.execStream.write('\r')
-        } else if (cleanOutput.includes('subscription') || cleanOutput.includes('Anthropic')) {
-          this.log('detected subscription prompt, sending Enter')
-          this.execStream.write('\r')
-        }
+      // Keep pressing Enter to navigate through onboarding until we see the URL
+      if (!cleanOutput.match(URL_REGEX) && this.execStream.writable) {
+        this.log('no URL yet, sending Enter to advance onboarding')
+        this.execStream.write('\r')
       }
 
       const match = cleanOutput.match(URL_REGEX)
