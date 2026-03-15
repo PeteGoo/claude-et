@@ -64,8 +64,9 @@ export class LoginFlowSession {
       this.output += chunk.toString('utf8')
     })
 
-    // Poll for the auth URL in the exec output
+    // Poll for the auth URL, auto-navigating onboarding prompts
     const deadline = Date.now() + deadlineMs
+    let lastOutputLen = 0
     while (Date.now() < deadline) {
       await new Promise(r => setTimeout(r, pollIntervalMs))
 
@@ -77,7 +78,22 @@ export class LoginFlowSession {
       }
 
       const cleanOutput = this.output.replace(/\x1b\[[^a-zA-Z]*[a-zA-Z]/g, '').replace(/[\x00-\x08]/g, '').trim()
-      this.log(`exec output (${cleanOutput.length} chars): ${cleanOutput.slice(0, 500)}`)
+
+      // Auto-navigate onboarding prompts by pressing Enter to accept defaults
+      if (cleanOutput.length > lastOutputLen) {
+        this.log(`exec output (${cleanOutput.length} chars): ${cleanOutput.slice(-300)}`)
+        lastOutputLen = cleanOutput.length
+
+        // Detect interactive prompts and press Enter to accept default selection
+        if (cleanOutput.includes('Dark mode') && cleanOutput.includes('Light mode')) {
+          this.log('detected theme prompt, sending Enter')
+          this.execStream.write('\r')
+        } else if (cleanOutput.includes('subscription') || cleanOutput.includes('Anthropic')) {
+          this.log('detected subscription prompt, sending Enter')
+          this.execStream.write('\r')
+        }
+      }
+
       const match = cleanOutput.match(URL_REGEX)
       if (match) {
         this.authUrl = match[0]
@@ -86,7 +102,7 @@ export class LoginFlowSession {
       }
     }
 
-    throw new Error('Timed out waiting for auth URL from claude auth login')
+    throw new Error('Timed out waiting for auth URL from claude interactive')
   }
 
   /**
