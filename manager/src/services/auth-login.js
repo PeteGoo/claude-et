@@ -77,6 +77,7 @@ export class LoginFlowSession {
       }
 
       const cleanOutput = this.output.replace(/\x1b\[[^a-zA-Z]*[a-zA-Z]/g, '').replace(/[\x00-\x08]/g, '').trim()
+      this.log(`exec output (${cleanOutput.length} chars): ${cleanOutput.slice(0, 500)}`)
       const match = cleanOutput.match(URL_REGEX)
       if (match) {
         this.authUrl = match[0]
