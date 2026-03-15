@@ -86,6 +86,16 @@ export class LoginFlowSession {
   }
 
   /**
+   * Writes the auth code into the exec stream's TTY stdin.
+   * @param {string} code - the OAuth code from the browser
+   */
+  submitCode(code) {
+    if (!this.execStream) throw new Error('No exec stream available')
+    this.execStream.write(code + '\n')
+    this.log('code submitted to exec stream')
+  }
+
+  /**
    * Checks whether `claude auth login` has completed by looking for
    * the credentials file in the container.
    * @returns {Promise<string|null>} the credentials JSON string, or null if not ready

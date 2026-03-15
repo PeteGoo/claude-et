@@ -1045,8 +1045,9 @@ function getCredentialWarning(status) {
 // ─── Login Flow Modal ─────────────────────────────────────────────────────────
 
 function LoginFlowModal({ onClose, onComplete }) {
-  const [stage, setStage] = useState('idle') // idle | starting | auth-url | polling | complete | error
+  const [stage, setStage] = useState('idle') // idle | starting | auth-url | submitting | polling | complete | error
   const [authUrl, setAuthUrl] = useState('')
+  const [code, setCode] = useState('')
   const [error, setError] = useState('')
 
   const pollRef = useRef(null)
@@ -1102,9 +1103,22 @@ function LoginFlowModal({ onClose, onComplete }) {
     }
   }
 
-  const startWaiting = () => {
-    setStage('polling')
-    startPolling()
+  const submitCode = async () => {
+    if (!code.trim()) return
+    setStage('submitting')
+    try {
+      const result = await api.post('/auth/login-code', { code: code.trim() })
+      if (result.error) {
+        setError(result.error)
+        setStage('error')
+        return
+      }
+      setStage('polling')
+      startPolling()
+    } catch (err) {
+      setError(err.message)
+      setStage('error')
+    }
   }
 
   return (
@@ -1145,12 +1159,28 @@ function LoginFlowModal({ onClose, onComplete }) {
                 </a>
                 <CopyButton text={authUrl} />
               </div>
-              <p className="text-sm text-zinc-400 mt-3">2. After authorizing, click below to detect completion:</p>
-              <button onClick={startWaiting}
-                className="w-full flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors">
-                I've Authorized
+              <p className="text-sm text-zinc-400 mt-3">2. Paste the code you received after authorizing:</p>
+              <input
+                type="text"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && submitCode()}
+                placeholder="Paste code here..."
+                className="w-full bg-zinc-800 border border-zinc-600 rounded-lg px-3 py-2.5 text-sm text-white font-mono placeholder-zinc-500 focus:outline-none focus:border-violet-500"
+                autoFocus
+              />
+              <button onClick={submitCode} disabled={!code.trim()}
+                className="w-full flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors">
+                Submit Code
               </button>
             </>
+          )}
+
+          {stage === 'submitting' && (
+            <div className="flex items-center justify-center gap-2 py-8 text-zinc-400">
+              <Loader size={18} className="animate-spin" />
+              <span className="text-sm">Submitting code...</span>
+            </div>
           )}
 
           {stage === 'polling' && (

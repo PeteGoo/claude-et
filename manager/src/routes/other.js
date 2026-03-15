@@ -194,6 +194,20 @@ export async function settingsRoutes(fastify) {
     }
   })
 
+  fastify.post('/auth/login-code', async (req, reply) => {
+    if (!loginFlowState) {
+      return reply.code(400).send({ error: 'No login flow in progress' })
+    }
+    const { code } = req.body
+    if (!code) return reply.code(400).send({ error: 'code required' })
+    try {
+      loginFlowState.submitCode(code)
+      return { submitted: true }
+    } catch (err) {
+      return reply.code(500).send({ error: err.message })
+    }
+  })
+
   fastify.get('/auth/login-poll', async (req, reply) => {
     if (!loginFlowState) {
       return reply.code(400).send({ error: 'No login flow in progress' })
