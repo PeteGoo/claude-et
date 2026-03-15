@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url'
 import { existsSync } from 'fs'
 
 import sessionRoutes from './routes/sessions.js'
-import { imageRoutes, githubRoutes, settingsRoutes } from './routes/other.js'
+import { imageRoutes, githubRoutes, settingsRoutes, cleanupRoutes } from './routes/other.js'
 import { syncSessionStatuses } from './services/docker.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -31,6 +31,7 @@ await fastify.register(async (api) => {
   await api.register(imageRoutes)
   await api.register(githubRoutes)
   await api.register(settingsRoutes)
+  await api.register(cleanupRoutes)
 }, { prefix: '/api' })
 
 // ─── Health check ─────────────────────────────────────────────────────────────

@@ -1,5 +1,7 @@
 import { nanoid } from 'nanoid'
-import { baseImages, settings } from '../services/db.js'
+import { readdirSync, rmSync, statSync } from 'fs'
+import { join } from 'path'
+import { baseImages, sessions, settings } from '../services/db.js'
 import { listAvailableImages, updateAllSessionCredentials } from '../services/docker.js'
 import { listRepos, createRepo, validateToken } from '../services/github.js'
 import { LoginFlowSession } from '../services/auth-login.js'
@@ -244,6 +246,71 @@ export async function settingsRoutes(fastify) {
     await loginFlowState.cleanup()
     loginFlowState = null
     return { cancelled: true }
+  })
+}
+
+// ─── Cleanup (orphaned session paths) ────────────────────────────────────────
+
+export async function cleanupRoutes(fastify) {
+  // List orphaned directories on disk that have no matching session in the DB
+  fastify.get('/cleanup/orphaned-paths', async () => {
+    const sessionsPath = settings.get('sessionsPath') || '/mnt/user/claude-sessions'
+    const knownIds = new Set(sessions.getAll().map(s => s.id))
+
+    let entries
+    try {
+      entries = readdirSync(sessionsPath, { withFileTypes: true })
+    } catch (err) {
+      return { orphanedPaths: [], error: `Cannot read sessions directory: ${err.message}` }
+    }
+
+    const orphaned = entries
+      .filter(e => e.isDirectory() && !knownIds.has(e.name))
+      .map(e => {
+        const fullPath = join(sessionsPath, e.name)
+        try {
+          const st = statSync(fullPath)
+          return { name: e.name, path: fullPath, modifiedAt: st.mtime.toISOString() }
+        } catch {
+          return { name: e.name, path: fullPath, modifiedAt: null }
+        }
+      })
+
+    return { orphanedPaths: orphaned, sessionsPath }
+  })
+
+  // Delete specific orphaned directories
+  fastify.post('/cleanup/delete-paths', async (req, reply) => {
+    const { names } = req.body
+    if (!Array.isArray(names) || names.length === 0) {
+      return reply.code(400).send({ error: 'names array required' })
+    }
+
+    const sessionsPath = settings.get('sessionsPath') || '/mnt/user/claude-sessions'
+    const knownIds = new Set(sessions.getAll().map(s => s.id))
+
+    const results = []
+    for (const name of names) {
+      // Safety: only delete if it's truly orphaned (not in DB) and doesn't contain path traversal
+      if (knownIds.has(name)) {
+        results.push({ name, deleted: false, reason: 'Active session' })
+        continue
+      }
+      if (name.includes('/') || name.includes('..')) {
+        results.push({ name, deleted: false, reason: 'Invalid name' })
+        continue
+      }
+
+      const fullPath = join(sessionsPath, name)
+      try {
+        rmSync(fullPath, { recursive: true, force: true })
+        results.push({ name, deleted: true })
+      } catch (err) {
+        results.push({ name, deleted: false, reason: err.message })
+      }
+    }
+
+    return { results }
   })
 }
 

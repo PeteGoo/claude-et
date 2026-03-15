@@ -3,7 +3,7 @@ import {
   Terminal, Play, Pause, Square, Trash2, Plus, Settings,
   RefreshCw, Copy, Check, Github, Server, ChevronRight,
   ChevronLeft, X, AlertCircle, AlertTriangle, Loader, HardDrive, Key,
-  Search, ScrollText, ArrowDown, ExternalLink
+  Search, ScrollText, ArrowDown, ExternalLink, FolderX
 } from 'lucide-react'
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
@@ -1218,6 +1218,122 @@ function LoginFlowModal({ onClose, onComplete }) {
   )
 }
 
+// ─── Cleanup Modal ───────────────────────────────────────────────────────────
+
+function CleanupModal({ onClose }) {
+  const [orphaned, setOrphaned] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [deleting, setDeleting] = useState(false)
+  const [selected, setSelected] = useState(new Set())
+  const [results, setResults] = useState(null)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    api.get('/cleanup/orphaned-paths').then(data => {
+      if (data.error) setError(data.error)
+      setOrphaned(data.orphanedPaths || [])
+      setSelected(new Set((data.orphanedPaths || []).map(p => p.name)))
+      setLoading(false)
+    }).catch(err => { setError(err.message); setLoading(false) })
+  }, [])
+
+  const toggle = (name) => {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
+
+  const deleteSelected = async () => {
+    if (!confirm(`Delete ${selected.size} orphaned path(s)? This cannot be undone.`)) return
+    setDeleting(true)
+    try {
+      const data = await api.post('/cleanup/delete-paths', { names: [...selected] })
+      setResults(data.results)
+      setOrphaned(prev => prev.filter(p => !data.results.find(r => r.name === p.name && r.deleted)))
+      setSelected(new Set())
+    } catch (err) {
+      setError(err.message)
+    }
+    setDeleting(false)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <div className="bg-zinc-900 border border-zinc-700 rounded-xl max-w-lg w-full max-h-[80vh] flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b border-zinc-800">
+          <h2 className="text-sm font-semibold flex items-center gap-2">
+            <FolderX size={16} className="text-violet-400" /> Clean Up Orphaned Paths
+          </h2>
+          <button onClick={onClose} className="text-zinc-500 hover:text-white"><X size={16} /></button>
+        </div>
+
+        <div className="p-4 overflow-y-auto flex-1 space-y-3">
+          <p className="text-xs text-zinc-500">
+            These directories exist on disk but have no matching session in the database.
+            They may be left over from deleted containers.
+          </p>
+
+          {loading && (
+            <div className="flex justify-center py-8"><Loader size={20} className="animate-spin text-zinc-600" /></div>
+          )}
+
+          {error && (
+            <div className="text-sm text-red-400 flex items-center gap-2">
+              <AlertCircle size={14} /> {error}
+            </div>
+          )}
+
+          {!loading && orphaned.length === 0 && !error && (
+            <div className="text-center py-8 text-zinc-500 text-sm">No orphaned paths found</div>
+          )}
+
+          {orphaned.length > 0 && (
+            <div className="space-y-1">
+              {orphaned.map(p => (
+                <label key={p.name} className="flex items-center gap-3 p-2 rounded-lg hover:bg-zinc-800 cursor-pointer">
+                  <input type="checkbox" checked={selected.has(p.name)} onChange={() => toggle(p.name)}
+                    className="rounded border-zinc-600 bg-zinc-800 text-violet-500 focus:ring-violet-500" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-mono truncate">{p.name}</div>
+                    {p.modifiedAt && (
+                      <div className="text-xs text-zinc-600">Modified: {new Date(p.modifiedAt).toLocaleString()}</div>
+                    )}
+                  </div>
+                </label>
+              ))}
+            </div>
+          )}
+
+          {results && (
+            <div className="space-y-1 border-t border-zinc-800 pt-3">
+              <p className="text-xs font-medium text-zinc-400">Results:</p>
+              {results.map(r => (
+                <div key={r.name} className={`text-xs ${r.deleted ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {r.name}: {r.deleted ? 'Deleted' : r.reason}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {orphaned.length > 0 && (
+          <div className="p-4 border-t border-zinc-800 flex items-center justify-between">
+            <span className="text-xs text-zinc-500">{selected.size} of {orphaned.length} selected</span>
+            <button onClick={deleteSelected} disabled={selected.size === 0 || deleting}
+              className="flex items-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-sm font-medium rounded-lg transition-colors">
+              {deleting ? <Loader size={14} className="animate-spin" /> : <Trash2 size={14} />}
+              Delete Selected
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Main App ─────────────────────────────────────────────────────────────────
 
 export default function App() {
@@ -1230,6 +1346,7 @@ export default function App() {
   const [logsSession, setLogsSession] = useState(null)
   const [credentialStatus, setCredentialStatus] = useState(null)
   const [showLoginFlow, setShowLoginFlow] = useState(false)
+  const [showCleanup, setShowCleanup] = useState(false)
 
   const refresh = useCallback(async () => {
     const [s, i, cs] = await Promise.all([api.get('/sessions'), api.get('/images'), api.get('/credentials-status')])
@@ -1266,6 +1383,10 @@ export default function App() {
         <div className="flex items-center gap-2">
           <button onClick={refresh} className="p-2 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors">
             <RefreshCw size={16} />
+          </button>
+          <button onClick={() => setShowCleanup(true)}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors text-sm">
+            <FolderX size={15} /> Clean Up
           </button>
           <button onClick={() => setShowSettings(true)}
             className="flex items-center gap-2 px-3 py-2 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors text-sm">
@@ -1360,6 +1481,7 @@ export default function App() {
       {sshSession && <SSHModal session={sshSession} onClose={() => setSshSession(null)} />}
       {logsSession && <LogsModal session={logsSession} onClose={() => setLogsSession(null)} />}
       {showLoginFlow && <LoginFlowModal onClose={() => { setShowLoginFlow(false); refresh() }} onComplete={refresh} />}
+      {showCleanup && <CleanupModal onClose={() => setShowCleanup(false)} />}
     </div>
   )
 }
