@@ -23,16 +23,17 @@ fi
 /usr/sbin/sshd
 
 # ─── Repo setup ──────────────────────────────────────────────────────────────
-# SESSION_REPOS format: "name:url:type,name::new"
+# SESSION_REPOS format: "name|url|type,name||new"
 # type = "clone" | "new"
 # For new repos, url is empty
+# Uses '|' as field separator to avoid conflicts with ':' in URLs
 
 if [ -n "$SESSION_REPOS" ]; then
     echo "Setting up repos..."
     IFS=',' read -ra REPO_ENTRIES <<< "$SESSION_REPOS"
-    
+
     for entry in "${REPO_ENTRIES[@]}"; do
-        IFS=':' read -r name url type <<< "$entry"
+        IFS='|' read -r name url type <<< "$entry"
         
         if [ "$type" = "clone" ] && [ -n "$url" ]; then
             echo "Cloning $name from $url..."

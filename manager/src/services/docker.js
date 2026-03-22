@@ -23,12 +23,12 @@ export function assignPort() {
 }
 
 // ─── Session repo env string ──────────────────────────────────────────────────
-// Format: "name:cloneUrl:clone,name::new"
+// Format: "name|cloneUrl|clone,name||new"  (pipe-delimited to avoid clashing with ':' in URLs)
 
 function buildRepoEnv(repos) {
   return repos.map(r => {
-    if (r.type === 'clone') return `${r.name}:${r.cloneUrl}:clone`
-    return `${r.name}::new`
+    if (r.type === 'clone') return `${r.name}|${r.cloneUrl}|clone`
+    return `${r.name}||new`
   }).join(',')
 }
 
