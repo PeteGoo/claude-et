@@ -132,6 +132,9 @@ fi
 # Default to same-dir spawn mode if not explicitly set
 SPAWN_MODE="${SPAWN_MODE:-same-dir}"
 CLAUDE_CMD="$CLAUDE_CMD --spawn=$SPAWN_MODE"
+# Always write debug logs so we can diagnose disconnections
+DEBUG_FILE="${CLAUDE_DEBUG_FILE:-/root/.claude/remote-debug.log}"
+CLAUDE_CMD="$CLAUDE_CMD --debug-file $DEBUG_FILE"
 
 tmux new-session -d -s "$TMUX_NAME" -c "$WORK_DIR"
 
